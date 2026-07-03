@@ -3,8 +3,9 @@
     @package         com.picacg.comic
     @content         comic
     @author          ai
+    @url             https://www.bikamanhua.com.cn
     @logo            https://www.bikamanhua.com.cn/logo.png
-    @source_url      https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/picacg.js
+    @source_url      https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua
     @enable_explore  true
     @version         1.0.0
     @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。

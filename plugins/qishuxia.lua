@@ -3,8 +3,9 @@
     @package         com.qishuwang.novel
     @content         novel
     @author          Ai
+    @url             https://www.qishuxia.com
     @logo            https://www.qishuxia.com/favicon.ico
-    @source_url      https://www.qishuxia.com
+    @source_url      https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuwang.lua
     @enable_explore  true
     @version         1.1.2
     @description     奇书网 - 好看的小说大全免费在线阅读和 txt 下载
@@ -694,7 +695,7 @@ local function apiFail(message, code)
 end
 
 --- 包装任意入口函数:统一返 { code, message, data }
----   1) 原函数已返 { code, message, data } → 原样返回(deq.lua 模式)
+---   1) 原函数已返 { code, message, data } → 原样返回(deqixs.lua 模式)
 ---   2) 原函数返其它值(数组/字符串/nil) → 包成 success
 ---   3) pcall 捕获失败 → apiFail
 local function safeApi(fn)

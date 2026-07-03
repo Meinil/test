@@ -1,0 +1,38 @@
+[
+  {
+    "name": "哔咔",
+    "package": "com.picacg.comic",
+    "content": "comic",
+    "author": "ai",
+    "logo": "https://www.bikamanhua.com.cn/logo.png",
+    "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua",
+    "url": "https://picaapi.picacomic.com",
+    "enableExplore": true,
+    "version": "1.0.0",
+    "description": "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。"
+  },
+  {
+    "name": "得奇小说网",
+    "package": "com.deqixs.novel",
+    "content": "novel",
+    "author": "Ai",
+    "logo": "https://www.deqixs.cc/favicon.ico",
+    "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua",
+    "url": "https://www.deqixs.cc",
+    "enableExplore": true,
+    "version": "1.0.10",
+    "description": "得奇小说网"
+  },
+  {
+    "name": "奇书网",
+    "package": "com.qishuwang.novel",
+    "content": "novel",
+    "author": "Ai",
+    "logo": "https://www.qishuxia.com/favicon.ico",
+    "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuwang.lua",
+    "url": "https://www.qishuxia.com",
+    "enableExplore": true,
+    "version": "1.1.2",
+    "description": "奇书网 - 好看的小说大全免费在线阅读和 txt 下载"
+  }
+]

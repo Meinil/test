@@ -5,8 +5,8 @@
     @author          Ai
     @logo            https://www.deqixs.cc/favicon.ico
     @url             https://www.deqixs.cc
-    @source_url      https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua
-    @enable_explore  true
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua
+    @enableExplore   true
     @version         1.0.10
     @description     得奇小说网
 ]]

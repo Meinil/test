@@ -7,7 +7,7 @@
     @logo            https://www.bikamanhua.com.cn/logo.png
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua
     @enableExplore   true
-    @version         1.0.1
+    @version         1.0.0
     @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。
 ]]
 
@@ -412,7 +412,7 @@ function settings()
             fields = {
                 { field = "username", label = "邮箱", required = true, type = "input", inputType = "text" },
                 { field = "password", label = "密码", required = true, type = "input", inputType = "password" },
-                { field = "baseUrl", label = "API 地址", required = false, type = "input", inputType = "text" },
+                { field = "baseUrl", label = "API 地址", required = false, type = "input", inputType = "text", default = "https://picaapi.picacomic.com" },
                 {
                     field = "imageQuality",
                     label = "图片质量",
@@ -423,6 +423,7 @@ function settings()
                         { value = "medium", label = "medium" },
                         { value = "low", label = "low" },
                     },
+                    default = "medium",
                 },
                 {
                     field = "appChannel",
@@ -434,6 +435,7 @@ function settings()
                         { value = "2", label = "2" },
                         { value = "3", label = "3" },
                     },
+                    default = "3",
                 },
             },
             actions = {

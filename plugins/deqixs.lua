@@ -15,6 +15,8 @@
 -- 配置
 -- =====================================================================
 local BASE = "https://www.deqixs.cc"
+-- 东八区(秒),与 alicesw.lua 一致
+local TZ_OFFSET = 8 * 60 * 60
 
 -- 通用 HTTP 头(Edge 149 真实浏览器指纹,deq server 验证 UA ↔ sec-ch-ua 品牌一致性)。
 -- 1.0.10 简化:只留必要字段(UA / sec-ch-ua / sec-ch-ua-platform / Accept-Language / Accept-Encoding),
@@ -384,6 +386,22 @@ function resourceInfo(bookUrl)
     local lastChapter = lastChapterEl and lime.dom.text(lastChapterEl) or ""
     local lastChapterUrl = lastChapterEl and lime.dom.attr(lastChapterEl, "href") or ""
 
+    local latestUpdateTimeEl = lime.dom.select(doc, "p.booktime")
+    local latestUpdateTime
+    if latestUpdateTimeEl then
+        local text = trim(lime.dom.text(latestUpdateTimeEl) or "")
+        lime.log.info("text", text)
+        if text ~= "" then
+            local ts, err = lime.time.parse_offset("更新时间：YYYY-MM-dd HH:mm", text, TZ_OFFSET)
+            if ts then
+                latestUpdateTime = ts
+            else
+                lime.log.warn("deqixs time parse failed: " .. text .. " " .. tostring(err))
+            end
+        end
+    end
+    lime.log.info("latestUpdateTime", latestUpdateTime)
+
     -- 字数:从 span.blue 内的 script 标签提取 towan('数字')
     local wordCount = extractWordCount(doc, html)
 
@@ -412,6 +430,7 @@ function resourceInfo(bookUrl)
         latestChapter     = trim(lastChapter),
         chapterCount      = chapterCount,
         latestChapterUrl  = lastChapterUrl,
+        latestUpdateTime  = latestUpdateTime,
         tags              = tags,
         kind              = trim(kind) ~= "" and trim(kind) or (trim(status) ~= "" and trim(status) or "小说"),
         tocUrl            = bookUrl,

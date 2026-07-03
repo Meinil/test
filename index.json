@@ -17,7 +17,7 @@
       "name": "得奇小说网",
       "package": "com.deqixs.novel",
       "content": "novel",
-      "author": "Ai",
+      "author": "ai",
       "logo": "https://www.deqixs.cc/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua",
       "url": "https://www.deqixs.cc",
@@ -29,13 +29,25 @@
       "name": "奇书网",
       "package": "com.qishuwang.novel",
       "content": "novel",
-      "author": "Ai",
+      "author": "ai",
       "logo": "https://www.qishuxia.com/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua",
       "url": "https://www.qishuxia.com",
       "enableExplore": true,
       "version": "1.1.2",
       "description": "奇书网 - 好看的小说大全免费在线阅读和 txt 下载"
+    },
+    {
+      "name": "爱丽丝书屋",
+      "package": "com.legado.xn_vcsx64d_alicesw12_xyz.novel",
+      "content": "novel",
+      "author": "ai",
+      "logo": "https://xn--vcsx64d.alicesw12.xyz/favicon.ico",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/alicesw.lua",
+      "url": "https://xn--vcsx64d.alicesw12.xyz",
+      "enableExplore": true,
+      "version": "0.2.0",
+      "description": "国内发布页：https://www.asw2.cc/"
     }
   ]
 }

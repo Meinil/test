@@ -1,11 +1,10 @@
 --[[
     @name            爱丽丝书屋
-    @package         com.xn_vcsx64d_alicesw12_xyz.novel
+    @package         com.legado.xn_vcsx64d_alicesw12_xyz.novel
     @content         novel
-    @author          ai
+    @author          legado-to-lime
     @url             https://xn--vcsx64d.alicesw12.xyz
     @sourceUrl       https://xn--vcsx64d.alicesw12.xyz/
-    @enableExplore   true
     @version         0.2.0
     @description     国内发布页：https://www.asw2.cc/
 ]]
@@ -308,7 +307,7 @@ local function parseDetail(html, url)
     local latestUpdateTime = 0
     local timeEl = lime.dom.select(doc, "#detail-box > div.book_newchap > div.con > li:nth-child(1) > em")
     if timeEl then
-        latestUpdateTime = parseTime(lime.dom.text(timeEl), "YYYY-MM-dd HH:mm")
+        latestUpdateTime = parseTime(lime.dom.text(timeEl), "更新时间：YYYY-MM-dd HH:mm")
     end
     return {
         name = name,

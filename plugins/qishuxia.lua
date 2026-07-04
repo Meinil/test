@@ -6,7 +6,6 @@
     @url             https://www.qishuxia.com
     @logo            https://www.qishuxia.com/favicon.ico
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua
-    @enableExplore   true
     @version         1.1.2
     @description     奇书网 - 好看的小说大全免费在线阅读和 txt 下载
 ]]

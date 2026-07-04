@@ -6,7 +6,6 @@
     @logo            https://www.deqixs.cc/favicon.ico
     @url             https://www.deqixs.cc
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua
-    @enableExplore   true
     @version         1.0.10
     @description     得奇小说网
 ]]
@@ -504,7 +503,6 @@ end
 -- 错误处理返回非 0 code,后端把 message 写入失败链路。
 -- =====================================================================
 function chapterContent(chapterUrl)
-    lime.log.info("chapterContent: " .. tostring(chapterUrl))
     local chapterBase = originOf(chapterUrl)
 
     -- 解析 URL 中的 articleId / chapterId
@@ -655,6 +653,7 @@ function explore()
             field = "category",
             label = "分类",
             type = "single",
+            default = "0",
             options = options,
         },
     }

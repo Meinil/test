@@ -6,7 +6,6 @@
     @url             https://www.bikamanhua.com.cn
     @logo            https://www.bikamanhua.com.cn/logo.png
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua
-    @enableExplore   true
     @version         1.0.0
     @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。
 ]]
@@ -144,6 +143,62 @@ local function encodeJson(value)
     return body, nil
 end
 
+--- Picacg ISO 8601 时间戳("2026-07-03T17:41:32.571Z")转 UTC Unix 秒。
+--- 输入为空或解析失败均返 0,不做 created_at 兜底。
+local function parseIsoTimestamp(s)
+    if not s or s == "" then return 0 end
+    local normalized = tostring(s):gsub("T", " "):gsub("%.%d+Z?$", ""):gsub("Z$", "")
+    local ts = lime.time.parse_offset("YYYY-MM-dd HH:mm:ss", normalized, 0)
+    return ts or 0
+end
+
+--- 底层 HTTP 调度:按 method 调 lime.http.{get,post,put},返回响应字符串。
+--- 抽出来便于 requestJson 与 requestEnvelope 共用 PUT/POST 编码路径。
+local function sendRequest(method, url, headers, payload)
+    local body, err
+    if method == "GET" then
+        body, err = lime.http.get(url, headers)
+    elseif method == "PUT" then
+        local encoded, encodeErr = encodeJson(payload or {})
+        if not encoded then return nil, encodeErr end
+        body, err = lime.http.put(url, encoded, headers)
+    else
+        local encoded, encodeErr = encodeJson(payload or {})
+        if not encoded then return nil, encodeErr end
+        body, err = lime.http.post(url, encoded, headers)
+    end
+    return body, err
+end
+
+--- 执行 Picacg 请求并返回完整 envelope `{code, message, data}`。
+---
+--- 与 requestJson 的区别:返回 envelope 全字段而不是只返 data。
+--- 注册 / 签到 / 修改密码等场景需要读 envelope.code 判断业务错误
+--- (Picacg 服务端把业务错误用 HTTP 200 + envelope{code:非 200,message:...} 表示)。
+local function requestEnvelope(method, path, payload, token, form)
+    local url = baseUrl(form and form.baseUrl) .. "/" .. path
+    local authToken = token
+    if authToken == nil then authToken = lime.storage.get("token") end
+    local headers, headerErr = buildHeaders(method, path, authToken, form)
+    if not headers then return nil, headerErr end
+    local body, err = sendRequest(method, url, headers, payload)
+    if path == "auth/sign-in" then
+        if body then
+            lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
+        else
+            lime.log.warn("[picacg] login error response: " .. maskLoginResponse(tostring(err or "")))
+        end
+    end
+    if not body then return nil, "Picacg 请求失败(" .. path .. "): " .. formatHttpError(err) end
+    local json, decodeErr = decodeJson(body)
+    if not json then return nil, decodeErr end
+    local code = tonumber(json.code)
+    if code ~= nil and code ~= 200 then
+        return nil, json.message or ("Picacg 业务错误 code=" .. tostring(code))
+    end
+    return json, nil
+end
+
 --- 执行 Picacg 请求并返回 data 字段。
 local function requestJson(method, path, payload, token, form)
     local url = baseUrl(form and form.baseUrl) .. "/" .. path
@@ -151,14 +206,7 @@ local function requestJson(method, path, payload, token, form)
     if authToken == nil then authToken = lime.storage.get("token") end
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
-    local body, err
-    if method == "GET" then
-        body, err = lime.http.get(url, headers)
-    else
-        local encoded, encodeErr = encodeJson(payload or {})
-        if not encoded then return nil, encodeErr end
-        body, err = lime.http.post(url, encoded, headers)
-    end
+    local body, err = sendRequest(method, url, headers, payload)
     if path == "auth/sign-in" then
         if body then
             lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
@@ -181,11 +229,8 @@ end
 --- Picacg comic 对象转 Lime ResourceDetailVO。
 local function comicToResource(comic)
     local tags = {}
-    -- chineseTeam 放第一位,_creator.name 放第二位(都按"有值才加"原则)
     local chineseTeam = trim(comic.chineseTeam or "")
-    if chineseTeam ~= "" then tags[#tags + 1] = chineseTeam end
     local uploaderName = trim((comic._creator or {}).name or "")
-    if uploaderName ~= "" then tags[#tags + 1] = uploaderName end
     for _, tag in ipairs(comic.tags or {}) do tags[#tags + 1] = tostring(tag) end
     for _, category in ipairs(comic.categories or {}) do tags[#tags + 1] = tostring(category) end
     return {
@@ -195,10 +240,21 @@ local function comicToResource(comic)
         coverUrl = imageUrl(comic.thumb),
         intro = trim(comic.description),
         latestChapter = "",
+        latestUpdateTime = parseIsoTimestamp(comic.updated_at),
         chapterCount = tonumber(comic.epsCount or 0) or 0,
         wordCount = tonumber(comic.pagesCount or 0) or 0,
         tags = tags,
         content = "comic",
+        meta = {
+            {
+                label = "汉化组",
+                field = chineseTeam
+            },
+            {
+                label = "上传者",
+                field = uploaderName
+            }
+        }
     }
 end
 
@@ -229,6 +285,95 @@ local function login(username, password, form)
     return data.token, nil
 end
 
+--- 校验注册表单。
+---
+--- 返回 (true, nil) 或 (false, err_msg)。校验规则对齐 BIKA 客户端:
+--- 用户名 a-zA-Z0-9、昵称 2–50、密码 ≥ 8、生日合法且 ≥ 18 岁、性别在 m/f/bot 内、
+--- 三组安全问题均非空。
+local function validateRegisterForm(data)
+    local username = trim(data.username or "")
+    if username == "" then return false, "用户名必填" end
+    if not username:match("^[a-zA-Z0-9]+$") then return false, "用户名仅允许字母与数字" end
+
+    local nickname = trim(data.nickname or "")
+    local nickLen = #nickname
+    if nickLen < 2 or nickLen > 50 then return false, "昵称长度需在 2–50 之间" end
+
+    local password = data.password or ""
+    if #password < 8 then return false, "密码至少 8 位" end
+
+    local birthday = trim(data.birthday or "")
+    if birthday == "" then return false, "生日必填" end
+    local ts = lime.time.parse("YYYY-MM-dd", birthday)
+    if not ts or ts == 0 then return false, "生日格式错误(应为 YYYY-MM-DD)" end
+    local nowSec = lime.time.unix()
+    if nowSec - ts < 18 * 365 * 24 * 3600 then return false, "需年满 18 岁" end
+
+    local gender = tostring(data.gender or "")
+    if gender ~= "m" and gender ~= "f" and gender ~= "bot" then return false, "性别取值不合法" end
+
+    for i = 1, 3 do
+        local q = trim(data["question" .. i] or "")
+        local a = trim(data["answer" .. i] or "")
+        if q == "" then return false, "安全问题 #" .. i .. " 必填" end
+        if a == "" then return false, "安全问题 #" .. i .. " 答案必填" end
+    end
+
+    return true, nil
+end
+
+--- 注册新账号。
+---
+--- POST auth/register(无需 token)。成功后不写 token,
+--- 用户需要再走 login 流程,行为对齐 BIKA。
+local function registerAccount(data, form)
+    local ok, err = validateRegisterForm(data)
+    if not ok then return nil, err end
+
+    local payload = {
+        email = trim(data.username),
+        name = trim(data.nickname),
+        password = data.password,
+        birthday = trim(data.birthday),
+        gender = data.gender,
+    }
+    for i = 1, 3 do
+        payload["question" .. i] = trim(data["question" .. i])
+        payload["answer" .. i] = trim(data["answer" .. i])
+    end
+
+    local envelope, reqErr = requestEnvelope("POST", "auth/register", payload, "", form)
+    if not envelope then return nil, reqErr end
+    return true, nil
+end
+
+--- 修改当前登录账号的密码。
+---
+--- PUT users/password(需 token)。old_password / password 字段名严格匹配 Picacg API。
+local function changeAccountPassword(oldPassword, newPassword, form)
+    if not oldPassword or oldPassword == "" then return nil, "原密码必填" end
+    if not newPassword or newPassword == "" then return nil, "新密码必填" end
+    if #newPassword < 8 then return nil, "新密码至少 8 位" end
+    if oldPassword == newPassword then return nil, "新密码不能与原密码相同" end
+
+    local envelope, reqErr = requestEnvelope("PUT", "users/password", {
+        old_password = oldPassword,
+        password = newPassword,
+    }, nil, form)
+    if not envelope then return nil, reqErr end
+    return true, nil
+end
+
+--- 每日签到。
+---
+--- POST users/punch-in(需 token,空 body)。server message 直接回传。
+local function punchInAccount(form)
+    local envelope, reqErr = requestEnvelope("POST", "users/punch-in", {}, nil, form)
+    if not envelope then return nil, reqErr end
+    local message = (envelope.data and envelope.data.message) or envelope.message or "打卡成功"
+    return true, message
+end
+
 --- 搜索漫画。
 function search(keyword, page)
     local current = tonumber(page) or 1
@@ -250,7 +395,7 @@ function explore()
     return {
         { field = "source", label = "来源", type = "single", options = SOURCE_OPTIONS },
         { field = "category", label = "分类", type = "single", options = categoryOptions },
-        { field = "sort", label = "排序", type = "single", options = SORT_OPTIONS },
+        { field = "sort", label = "排序", type = "single", options = SORT_OPTIONS, default = SORT_OPTIONS[1].field  },
     }
 end
 
@@ -443,6 +588,64 @@ function settings()
             },
         },
         {
+            label = "注册账号",
+            key = "register",
+            type = "dialog",
+            icon = "UserPlus",
+            visible = not hasToken,
+            fields = {
+                { field = "username", label = "用户名(字母+数字)", required = true, type = "input", inputType = "text" },
+                { field = "nickname", label = "昵称(2–50 字符)", required = true, type = "input", inputType = "text" },
+                { field = "password", label = "密码(至少 8 位)", required = true, type = "input", inputType = "password" },
+                {
+                    field = "gender",
+                    label = "性别",
+                    required = true,
+                    type = "radio",
+                    options = {
+                        { value = "m", label = "男" },
+                        { value = "f", label = "女" },
+                        { value = "bot", label = "机器人" },
+                    },
+                    default = "m",
+                },
+                { field = "birthday", label = "生日", required = true, type = "date", default = "2000-01-01" },
+                { field = "question1", label = "安全问题 1", required = true, type = "input", inputType = "text" },
+                { field = "answer1", label = "答案 1", required = true, type = "input", inputType = "text" },
+                { field = "question2", label = "安全问题 2", required = true, type = "input", inputType = "text" },
+                { field = "answer2", label = "答案 2", required = true, type = "input", inputType = "text" },
+                { field = "question3", label = "安全问题 3", required = true, type = "input", inputType = "text" },
+                { field = "answer3", label = "答案 3", required = true, type = "input", inputType = "text" },
+            },
+            actions = {
+                { field = "registerBtn", label = "注册", action = "registerBtn" },
+            },
+        },
+        {
+            label = "修改密码",
+            key = "changePassword",
+            type = "dialog",
+            icon = "KeyRound",
+            visible = hasToken,
+            fields = {
+                { field = "oldPassword", label = "原密码", required = true, type = "input", inputType = "password" },
+                { field = "newPassword", label = "新密码(至少 8 位)", required = true, type = "input", inputType = "password" },
+            },
+            actions = {
+                { field = "changePasswordBtn", label = "修改密码", action = "changePasswordBtn" },
+            },
+        },
+        {
+            label = "每日签到",
+            key = "punchIn",
+            type = "click",
+            icon = "CalendarCheck",
+            visible = hasToken,
+            actions = {
+                { field = "punchInBtn", label = "签到", action = "punchInBtn" },
+            },
+        },
+        {
             label = "登出",
             key = "logout",
             type = "click",
@@ -477,6 +680,24 @@ function settingsAction(data)
         local _, err = login(data.username, data.password, data)
         if err then return { code = 400, message = err, data = nil } end
         return { code = 0, message = "Picacg 登录成功", data = { ok = true, message = "Picacg 登录成功" } }
+    elseif action == "registerBtn" then
+        local _, err = registerAccount(data, data)
+        if err then return { code = 400, message = err, data = nil } end
+        return { code = 0, message = "注册成功,请用新账号登录", data = { ok = true, message = "注册成功,请用新账号登录" } }
+    elseif action == "changePasswordBtn" then
+        if not lime.storage.get("token") then
+            return { code = 400, message = "未登录: 请先登录 Picacg", data = nil }
+        end
+        local _, err = changeAccountPassword(data.oldPassword, data.newPassword, data)
+        if err then return { code = 400, message = err, data = nil } end
+        return { code = 0, message = "密码已修改", data = { ok = true, message = "密码已修改" } }
+    elseif action == "punchInBtn" then
+        if not lime.storage.get("token") then
+            return { code = 400, message = "未登录: 请先登录 Picacg", data = nil }
+        end
+        local _, msg = punchInAccount(data)
+        if not msg then return { code = 400, message = "打卡失败", data = nil } end
+        return { code = 0, message = msg, data = { ok = true, message = msg } }
     elseif action == "logoutBtn" then
         lime.storage.remove("token")
         lime.storage.remove("account")

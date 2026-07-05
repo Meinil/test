@@ -1,6 +1,6 @@
 --[[
     @name            天美小说
-    @package         com.legado.m_tianmeixs_com.novel
+    @package         com.meinil.lime.ai.tianmeixs
     @content         novel
     @author          legado-to-lime
     @url             https://m.tianmeixs.com
@@ -30,21 +30,6 @@ local CATEGORIES = {
     { field = "9", label = "禁忌百合", url = "/sort/9_{{page}}/" },
     { field = "10", label = "精品文学", url = "/sort/10_{{page}}/" },
 }
-
-local function apiOk(data, message)
-    return { code = 0, message = message or "ok", data = data }
-end
-
-local function apiFail(message, code)
-    return { code = code or 500, message = tostring(message or "unknown error"), data = nil }
-end
-
-local function safeApi(fn)
-    local ok, result = pcall(fn)
-    if ok and type(result) == "table" and result.code ~= nil then return result end
-    if ok then return apiOk(result) end
-    return apiFail(result, 500)
-end
 
 local function trim(s)
     if not s or s == "" then return "" end
@@ -98,13 +83,17 @@ local function documentHeaders(referer)
 end
 
 local function httpGet(url, referer)
-    return lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    local body, _, err = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    if err then error("lime.http.get: " .. tostring(err)) end
+    return body
 end
 
 local function httpPost(url, body, referer)
     local headers = documentHeaders(referer or BASE .. "/")
     headers["Content-Type"] = "application/x-www-form-urlencoded"
-    return lime.http.post(url, body, headers)
+    local text, _, err = lime.http.post(url, body, headers)
+    if err then error("lime.http.post: " .. tostring(err)) end
+    return text
 end
 
 local function encodeGbLike(value)
@@ -244,23 +233,18 @@ end
 local function rawSearch(keyword, page)
     local url = BASE .. "/s.php"
     local body = "type=articlename&s=" .. encodeGbLike(keyword or "")
-    local html, err = httpPost(url, body, BASE .. "/")
-    if not html then
-        lime.log.warn("search failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpPost(url, body, BASE .. "/")
     return parseSearchResources(html, url)
 end
 
 local function rawResourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
-    local html, err = httpGet(fullUrl, BASE .. "/")
-    if not html then
-        lime.log.warn("resourceInfo failed: " .. tostring(err))
-        return nil
-    end
+    local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
     local name = cleanLabel(selectText(doc, ".xx ul li:nth-child(1)"), "")
+    if name == "" then
+        error("未找到资源详情")
+    end
     local kind = cleanLabel(selectText(doc, ".xx ul li:nth-child(2)"), "分类：")
     local author = cleanLabel(selectText(doc, ".xx ul li:nth-child(3)"), "作者：")
     local latestChapter = cleanLabel(selectText(doc, ".xx ul li:nth-child(4)"), "更新：")
@@ -308,7 +292,8 @@ end
 local function rawChapterList(bookUrl)
     local firstUrl = absolutize(bookUrl, BASE)
     local info = rawResourceInfo(firstUrl)
-    if info and info.tocUrl and info.tocUrl ~= "" then firstUrl = info.tocUrl end
+    -- rawResourceInfo 失败时 throw,会自动冒泡到 backend
+    if info.tocUrl and info.tocUrl ~= "" then firstUrl = info.tocUrl end
 
     local chapters = {}
     local seenChapter = {}
@@ -318,25 +303,20 @@ local function rawChapterList(bookUrl)
     while cursor <= #pageQueue and cursor <= 30 do
         local pageUrl = pageQueue[cursor]
         cursor = cursor + 1
-        local html, err = httpGet(pageUrl, firstUrl)
-        if html then
-            parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue, seenPage)
-        else
-            lime.log.warn("chapterList page failed: " .. tostring(err))
-        end
+        local html = httpGet(pageUrl, firstUrl)
+        parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue, seenPage)
     end
     return chapters
 end
 
 local function rawChapterContent(chapterUrl)
     local fullUrl = absolutize(chapterUrl, BASE)
-    local html, err = httpGet(fullUrl, BASE .. "/")
-    if not html then return { code = 500, message = "获取章节页面失败: " .. tostring(err), data = nil } end
+    local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
     local contentEl = lime.dom.select(doc, "#nr")
     local raw = contentEl and lime.dom.html(contentEl) or ""
     local blocks = blocksFromText(htmlToText(raw))
-    if #blocks == 0 then return { code = 500, message = "章节内容为空", data = nil } end
+    if #blocks == 0 then error("章节内容为空") end
     return blocks
 end
 
@@ -364,46 +344,43 @@ local function rawExploreSearch(keyword, payload)
     local page = payload and tonumber(payload.current) or 1
     local url = absolutize(selected.url:gsub("{{page}}", tostring(page)), BASE)
     lime.log.info("url" .. url)
-    local html, err = httpGet(url, BASE .. "/")
-    if not html then
-        lime.log.warn("exploreSearch failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(url, BASE .. "/")
     return parseExploreResources(html, url)
 end
 
 local function rawTest(content)
-    local html, err = httpGet(BASE .. "/sort/1_1/", BASE .. "/")
-    if not html then return { code = 500, message = "Test failed: " .. tostring(err), data = nil } end
+    local html = httpGet(BASE .. "/sort/1_1/", BASE .. "/")
     local count = #parseExploreResources(html, BASE .. "/sort/1_1/")
     local message = "天美小说 explore smoke path returned " .. tostring(count) .. " items"
-    return { code = 0, message = message, data = { ok = true, message = message } }
+    return { ok = true, message = message }
 end
 
+-- 顶层入口函数已直接定义在 globals(每个 raw 函数即顶层入口)。
+-- 成功:返回裸数据,失败:throw error。
 function search(keyword, page)
-    return safeApi(function() return rawSearch(keyword, page) end)
+    return rawSearch(keyword, page)
 end
 
 function resourceInfo(bookUrl)
-    return safeApi(function() return rawResourceInfo(bookUrl) end)
+    return rawResourceInfo(bookUrl)
 end
 
 function chapterList(bookUrl)
-    return safeApi(function() return rawChapterList(bookUrl) end)
+    return rawChapterList(bookUrl)
 end
 
 function chapterContent(chapterUrl)
-    return safeApi(function() return rawChapterContent(chapterUrl) end)
+    return rawChapterContent(chapterUrl)
 end
 
 function explore()
-    return safeApi(function() return rawExplore() end)
+    return rawExplore()
 end
 
 function exploreSearch(keyword, payload)
-    return safeApi(function() return rawExploreSearch(keyword, payload) end)
+    return rawExploreSearch(keyword, payload)
 end
 
 function test(content)
-    return safeApi(function() return rawTest(content) end)
+    return rawTest(content)
 end

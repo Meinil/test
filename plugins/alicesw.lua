@@ -1,8 +1,8 @@
 --[[
     @name            爱丽丝书屋
-    @package         com.legado.xn_vcsx64d_alicesw12_xyz.novel
+    @package         com.meinil.lime.ai.alicesw
     @content         novel
-    @author          legado-to-lime
+    @author          ai
     @url             https://xn--vcsx64d.alicesw12.xyz
     @sourceUrl       https://xn--vcsx64d.alicesw12.xyz/
     @version         0.2.0
@@ -67,21 +67,6 @@ local CATEGORIES = {
     { field = "21", label = "重口", url = BASE .. "/all/id/21/order/hits+desc.html?page={{page}}" },
 }
 
-local function apiOk(data, message)
-    return { code = 0, message = message or "ok", data = data }
-end
-
-local function apiFail(message, code)
-    return { code = code or 500, message = tostring(message or "unknown error"), data = nil }
-end
-
-local function safeApi(fn)
-    local ok, result = pcall(fn)
-    if ok and type(result) == "table" and result.code ~= nil then return result end
-    if ok then return apiOk(result) end
-    return apiFail(result, 500)
-end
-
 local function trim(s)
     if not s or s == "" then return "" end
     s = tostring(s):gsub("^%s+", ""):gsub("%s+$", "")
@@ -137,7 +122,9 @@ local function documentHeaders(referer)
 end
 
 local function httpGet(url, referer)
-    return lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    local body, _, err = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    if err then error("lime.http.get: " .. tostring(err)) end
+    return body
 end
 
 local function encodeUrl(textValue)
@@ -332,37 +319,24 @@ local function fetchUrl(urlTemplate, keyword, page)
     url = url:gsub("{{key}}", encodeUrl(keyword or ""))
     url = url:gsub("{{page}}", tostring(page or 1))
     url = absolutize(url, BASE)
-    local html, err = httpGet(url, BASE .. "/")
-    return html, err, url
+    return httpGet(url, BASE .. "/"), url
 end
 
 local function rawSearch(keyword, page)
-    local html, err, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
-    if not html then
-        lime.log.warn("search failed: " .. tostring(err))
-        return {}
-    end
+    local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
     return parseSearchResources(html, finalUrl)
 end
 
 local function rawResourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
-    local html, err = httpGet(fullUrl, BASE .. "/")
-    if not html then
-        lime.log.warn("resourceInfo failed: " .. tostring(err))
-        return nil
-    end
+    local html = httpGet(fullUrl, BASE .. "/")
     return parseDetail(html, fullUrl)
 end
 
 local function rawChapterList(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     if fullUrl:find("/novel/", 1, true) then fullUrl = tocUrlFromBookUrl(fullUrl) end
-    local html, err = httpGet(fullUrl, BASE .. "/")
-    if not html then
-        lime.log.warn("chapterList failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
     local links = lime.dom.selectAll(doc, "ul.mulu_list li a")
     local chapters = {}
@@ -380,8 +354,7 @@ end
 
 local function rawChapterContent(chapterUrl)
     local fullUrl = absolutize(chapterUrl, BASE)
-    local html, err = httpGet(fullUrl, BASE .. "/")
-    if not html then return { code = 500, message = "获取章节页面失败: " .. tostring(err), data = nil } end
+    local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
     local paragraphs = lime.dom.selectAll(doc, ".read-content p")
     local chunks = {}
@@ -394,7 +367,7 @@ local function rawChapterContent(chapterUrl)
         if contentEl then chunks[#chunks + 1] = htmlToText(lime.dom.html(contentEl)) end
     end
     local blocks = blocksFromText(table.concat(chunks, "\n"))
-    if #blocks == 0 then return { code = 500, message = "章节内容为空", data = nil } end
+    if #blocks == 0 then error("章节内容为空") end
     return blocks
 end
 
@@ -413,48 +386,41 @@ local function rawExploreSearch(keyword, payload)
         if tostring(c.field) == tostring(wanted) then selected = c end
     end
     local page = payload and tonumber(payload.current) or 1
-    local html, err, finalUrl = fetchUrl(selected.url, keyword, page)
-    if not html then
-        lime.log.warn("exploreSearch failed: " .. tostring(err))
-        return {}
-    end
+    local html, finalUrl = fetchUrl(selected.url, keyword, page)
     return parseRankResources(html, finalUrl)
 end
 
 local function rawTest(content)
-    local ok, result = pcall(function()
-        return rawSearch(content or "美母为妻", 1)
-    end)
-    if not ok then return { code = 500, message = "Test failed: " .. tostring(result), data = nil } end
-    local count = type(result) == "table" and #result or 0
+    local results = rawSearch(content or "美母为妻", 1)
+    local count = type(results) == "table" and #results or 0
     local message = "爱丽丝书屋 smoke path returned " .. tostring(count) .. " items"
-    return { code = 0, message = message, data = { ok = true, message = message } }
+    return { ok = true, message = message }
 end
 
 function search(keyword, page)
-    return safeApi(function() return rawSearch(keyword, page) end)
+    return rawSearch(keyword, page)
 end
 
 function resourceInfo(bookUrl)
-    return safeApi(function() return rawResourceInfo(bookUrl) end)
+    return rawResourceInfo(bookUrl)
 end
 
 function chapterList(bookUrl)
-    return safeApi(function() return rawChapterList(bookUrl) end)
+    return rawChapterList(bookUrl)
 end
 
 function chapterContent(chapterUrl)
-    return safeApi(function() return rawChapterContent(chapterUrl) end)
+    return rawChapterContent(chapterUrl)
 end
 
 function explore()
-    return safeApi(function() return rawExplore() end)
+    return rawExplore()
 end
 
 function exploreSearch(keyword, payload)
-    return safeApi(function() return rawExploreSearch(keyword, payload) end)
+    return rawExploreSearch(keyword, payload)
 end
 
 function test(content)
-    return safeApi(function() return rawTest(content) end)
+    return rawTest(content)
 end

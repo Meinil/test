@@ -1,12 +1,12 @@
 --[[
     @name            奇书网
-    @package         com.qishuwang.novel
+    @package         com.meinil.lime.ai.qishuxia
     @content         novel
     @author          Ai
     @url             https://www.qishuxia.com
     @logo            https://www.qishuxia.com/favicon.ico
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua
-    @version         1.1.2
+    @version         1.1.4
     @description     奇书网 - 好看的小说大全免费在线阅读和 txt 下载
 ]]
 
@@ -26,6 +26,9 @@ local BROWSER_HEADERS = {
     ["sec-ch-ua-platform"] = '"Windows"',
     ["Upgrade-Insecure-Requests"] = "1",
 }
+
+-- 时区偏移(东八区,站点返回的时间视为北京时间)
+local TZ_OFFSET = 8 * 60 * 60
 
 -- 探索页分类(同时是 explore() 的 options 数据源)
 -- field = URL 中分类目录 id,label = 显示文案
@@ -140,22 +143,22 @@ end
 -- 工具:HTTP 包装
 -- =====================================================================
 
---- GET 包装,失败返 nil + err;成功返 body
+--- GET 包装,失败 throw error(包含 reqwest err);成功返 body
 local function httpGet(url, headers)
-    local body, err = lime.http.get(url, headers)
-    if err and tostring(err):find("HTTP 403", 1, true) and tostring(err):find("window.location.href", 1, true) then
+    local body, code, err = lime.http.get(url, headers)
+    if err and code == 2203 and body and body:find("window.location.href", 1, true) then
         lime.log.info("httpGet: retry after 403 js redirect challenge")
-        body, err = lime.http.get(url, headers)
+        body, code, err = lime.http.get(url, headers)
     end
-    if err then return nil, err end
-    return body, nil
+    if err then error("lime.http.get: " .. tostring(err)) end
+    return body
 end
 
---- POST 包装,失败返 nil + err
+--- POST 包装,失败 throw error;成功返 body
 local function httpPost(url, body, headers)
-    local text, err = lime.http.post(url, body, headers)
-    if err then return nil, err end
-    return text, nil
+    local text, _, err = lime.http.post(url, body, headers)
+    if err then error("lime.http.post: " .. tostring(err)) end
+    return text
 end
 
 -- =====================================================================
@@ -229,6 +232,7 @@ local function buildBookItem(name, author, bookUrl, coverUrl, lastChapter, opts)
         wordCount     = opts.wordCount or 0,
         latestChapterUrl = opts.latestChapterUrl or "",
         kind          = opts.kind or "",
+        latestUpdateTime = opts.latestUpdateTime,
     }
 end
 
@@ -237,12 +241,13 @@ end
 --- @return table 包含 name/author/coverUrl/intro/kind/lastChapter 字段
 local function parseBookInfoHtml(html)
     local result = {
-        name        = "",
-        author      = "",
-        coverUrl    = "",
-        intro       = "",
-        kind        = "",
-        lastChapter = "",
+        name             = "",
+        author           = "",
+        coverUrl         = "",
+        intro            = "",
+        kind             = "",
+        lastChapter      = "",
+        latestUpdateTime = nil
     }
     if not html or html == "" then return result end
 
@@ -279,6 +284,17 @@ local function parseBookInfoHtml(html)
     trySet("lastChapter", {
         '<meta property="og:novel:latest_chapter_name" content="([^"]+)"',
     })
+
+    -- 更新时间:og:novel:update_time 内容格式为 "YYYY-MM-dd HH:mm"(北京时间)
+    local updateTimeRaw = html:match('<meta property="og:novel:update_time" content="([^"]+)"')
+    if updateTimeRaw and updateTimeRaw ~= "" then
+        local ts, err = lime.time.parse_offset("YYYY-MM-dd HH:mm", updateTimeRaw, TZ_OFFSET)
+        if ts then
+            result.latestUpdateTime = ts
+        else
+            lime.log.warn("qishuxia update_time parse failed: " .. updateTimeRaw .. " " .. tostring(err))
+        end
+    end
 
     if result.name == "" then result.name = "未知书名" end
     if result.author == "" then result.author = "未知作者" end
@@ -367,27 +383,43 @@ function search(keyword, page)
 
     warmSite()
 
+    -- 预热搜索页,触发服务端写入 jieqiVisitTime=jieqiArticlesearchTime=...
+    -- warmSite 只 warm 了主页,这里补一次 search.php 以让 jieqi CMS 反爬 cookie 入 jar
+    pcall(lime.http.cookies.warm, BASE .. "/modules/article/search.php", {
+        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
+        ["Accept"]                   = BROWSER_HEADERS["Accept"],
+        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
+        ["Upgrade-Insecure-Requests"] = "1",
+        ["Referer"]                  = BASE .. "/",
+        ["Sec-Fetch-Dest"]           = "document",
+        ["Sec-Fetch-Mode"]           = "navigate",
+        ["Sec-Fetch-Site"]           = "same-origin",
+        ["Sec-Fetch-User"]           = "?1",
+    })
+
     local headers = {
-        ["User-Agent"]         = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]    = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]             = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]    = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]          = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]   = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"] = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Content-Type"]       = "application/x-www-form-urlencoded",
-        ["Origin"]             = BASE,
-        ["Referer"]            = BASE .. "/",
-        ["Sec-Fetch-Dest"]     = "empty",
-        ["Sec-Fetch-Mode"]     = "cors",
-        ["Sec-Fetch-Site"]     = "same-origin",
+        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
+        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
+        ["Accept"]                   = BROWSER_HEADERS["Accept"],
+        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
+        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
+        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
+        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
+        ["Content-Type"]             = "application/x-www-form-urlencoded",
+        ["Origin"]                   = BASE,
+        ["Referer"]                  = BASE .. "/",
+        ["Upgrade-Insecure-Requests"] = "1",
+        ["Cache-Control"]            = "max-age=0",
+        ["Sec-Fetch-Dest"]           = "document",
+        ["Sec-Fetch-Mode"]           = "navigate",
+        ["Sec-Fetch-Site"]           = "same-origin",
+        ["Sec-Fetch-User"]           = "?1",
     }
 
     -- 服务端 search 接口用 GBK 编码 keyword(form 表单提交到 GBK 网站)
     local encodedKeyword, encErr = lime.crypto.urlEncodeWithCharset(tostring(keyword), "gbk")
     if not encodedKeyword then
-        lime.log.warn("search: gbk encode failed: " .. tostring(encErr))
-        return {}
+        error("GBK 编码失败: " .. tostring(encErr))
     end
 
     local body = "searchkey=" .. encodedKeyword
@@ -395,11 +427,7 @@ function search(keyword, page)
         body = body .. "&page=" .. tostring(page)
     end
 
-    local html, err = httpPost(BASE .. "/modules/article/search.php", body, headers)
-    if not html then
-        lime.log.warn("search http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpPost(BASE .. "/modules/article/search.php", body, headers)
 
     local doc = lime.dom.parse(html)
     local books = parseBooks(doc, "", true)
@@ -431,13 +459,12 @@ function resourceInfo(bookUrl)
     }
 
     local fullUrl = absolutize(bookUrl)
-    local html, err = httpGet(fullUrl, headers)
-    if not html then
-        lime.log.warn("resourceInfo http failed: " .. tostring(err))
-        return nil
-    end
+    local html = httpGet(fullUrl, headers)
 
     local info = parseBookInfoHtml(html)
+    if not info or info.name == "" then
+        error("未找到资源详情")
+    end
     return buildBookItem(
         info.name, info.author, fullUrl,
         absolutize(info.coverUrl),
@@ -447,6 +474,7 @@ function resourceInfo(bookUrl)
             kind         = info.kind ~= "" and info.kind or "小说",
             chapterCount = 0, -- 详情页无完整目录数,由 library.rs 入库时按 chapterList 实际数量回填
             wordCount    = 0,
+            latestUpdateTime = info.latestUpdateTime,
         }
     )
 end
@@ -475,18 +503,13 @@ function chapterList(bookUrl)
     }
 
     local fullUrl = absolutize(bookUrl)
-    local html, err = httpGet(fullUrl, headers)
-    if not html then
-        lime.log.warn("chapterList http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(fullUrl, headers)
 
     local doc = lime.dom.parse(html)
     local container = lime.dom.select(doc, "#section-list")
     local anchors = container and selectAllIn(container, "a") or lime.dom.selectAll(doc, "a")
     if not anchors or #anchors == 0 then
-        lime.log.warn("chapterList: no anchors found")
-        return {}
+        error("未找到章节列表")
     end
 
     local chapters = {}
@@ -506,6 +529,9 @@ function chapterList(bookUrl)
         end
         ::continue::
     end
+    if #chapters == 0 then
+        error("未找到章节列表")
+    end
     lime.log.info("chapterList: count=" .. #chapters)
     return chapters
 end
@@ -513,7 +539,7 @@ end
 -- =====================================================================
 -- 章节正文 chapterContent(chapterUrl)
 -- 返回 ChapterBlock[]:每段一个 txt 块(前端 1 块 = 1 个 scroller item)
--- 错误处理:返回 { code = 500, message, data = nil },后端写入失败链路
+-- 错误处理:error("<消息>") 抛出,backend 映成 1101(见 Plugin.md §2.6)
 -- =====================================================================
 
 function chapterContent(chapterUrl)
@@ -536,11 +562,7 @@ function chapterContent(chapterUrl)
     }
 
     local fullUrl = absolutize(chapterUrl)
-    local html, err = httpGet(fullUrl, headers)
-    if not html then
-        lime.log.warn("chapterContent http failed: " .. tostring(err))
-        return { code = 500, message = "获取章节页面失败", data = nil }
-    end
+    local html = httpGet(fullUrl, headers)
 
     local doc = lime.dom.parse(html)
     -- 主内容容器优先 #content,fallback .content
@@ -549,8 +571,7 @@ function chapterContent(chapterUrl)
         contentEl = lime.dom.select(doc, ".content")
     end
     if not contentEl then
-        lime.log.warn("chapterContent: no content element found")
-        return { code = 500, message = "正文节点不存在", data = nil }
+        error("正文节点不存在")
     end
 
     -- scraper text() 不输出 script/style 文本,无需 legado.dom.remove
@@ -559,8 +580,11 @@ function chapterContent(chapterUrl)
 
     local paragraphs = splitParagraphs(cleaned)
     if #paragraphs == 0 then
-        lime.log.warn("chapterContent: empty after clean")
-        return { code = 500, message = "章节内容为空", data = nil }
+        error("章节内容为空")
+    end
+    -- 首段通常是重复的章节标题,过滤掉
+    if #paragraphs > 1 then
+        table.remove(paragraphs, 1)
     end
 
     local blocks = {}
@@ -634,11 +658,7 @@ function exploreSearch(keyword, payload)
         ["Sec-Fetch-User"]           = "?1",
     }
 
-    local html, err = httpGet(url, headers)
-    if not html then
-        lime.log.warn("exploreSearch http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(url, headers)
 
     local doc = lime.dom.parse(html)
     return parseBooks(doc, "", false)
@@ -652,92 +672,30 @@ end
 function test(content)
     lime.log.info("test: smoke check")
     warmSite()
-    local ok, data = pcall(function()
-        local headers = {
-            ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-            ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-            ["Accept"]                   = BROWSER_HEADERS["Accept"],
-            ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-            ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-            ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-            ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-            ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-            ["Sec-Fetch-Dest"]           = "document",
-            ["Sec-Fetch-Mode"]           = "navigate",
-            ["Sec-Fetch-Site"]           = "none",
-            ["Sec-Fetch-User"]           = "?1",
-        }
-        return httpGet(BASE .. "/" .. CATEGORIES[1].field .. "/", headers)
-    end)
-
-    if not ok then
-        return { code = 500, message = "Test failed: " .. tostring(data), data = nil }
-    end
+    local headers = {
+        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
+        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
+        ["Accept"]                   = BROWSER_HEADERS["Accept"],
+        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
+        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
+        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
+        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
+        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
+        ["Sec-Fetch-Dest"]           = "document",
+        ["Sec-Fetch-Mode"]           = "navigate",
+        ["Sec-Fetch-Site"]           = "none",
+        ["Sec-Fetch-User"]           = "?1",
+    }
+    local data = httpGet(BASE .. "/" .. CATEGORIES[1].field .. "/", headers)
     if not data or data == "" then
-        return { code = 500, message = "Test failed: empty response", data = nil }
+        error("Test failed: empty response")
     end
     local message = "奇书网 reachable, " .. #data .. " bytes from explore page"
-    return { code = 0, message = message, data = { ok = true, message = message } }
+    return { ok = true, message = message }
 end
 
 -- =====================================================================
--- 统一 Lua ApiResponse 包装:业务入口返回 `{ code, message, data }`。
--- 原实现保留;包装层捕获 Lua error,避免 runtime traceback 直接冒泡到前端。
+-- 顶层入口:直接返回裸数据(成功)/ throw error(失败)
+-- backend runner::invoke 接 mlua::Error → PluginRuntimeError → 1101
+-- decode_lua_response 把裸数据视为 success data
 -- =====================================================================
-
-local function apiOk(data, message)
-    return { code = 0, message = message or "ok", data = data }
-end
-
-local function apiFail(message, code)
-    return { code = code or 500, message = tostring(message or "unknown error"), data = nil }
-end
-
---- 包装任意入口函数:统一返 { code, message, data }
----   1) 原函数已返 { code, message, data } → 原样返回(deqixs.lua 模式)
----   2) 原函数返其它值(数组/字符串/nil) → 包成 success
----   3) pcall 捕获失败 → apiFail
-local function safeApi(fn)
-    local ok, result = pcall(fn)
-    if ok and type(result) == "table" and result.code ~= nil then
-        return result
-    end
-    if ok then return apiOk(result) end
-    return apiFail(result, 500)
-end
-
-local rawSearch         = search
-local rawResourceInfo   = resourceInfo
-local rawChapterList    = chapterList
-local rawChapterContent = chapterContent
-local rawExplore        = explore
-local rawExploreSearch  = exploreSearch
-local rawTest           = test
-
-function search(keyword, page)
-    return safeApi(function() return rawSearch(keyword, page) end)
-end
-
-function resourceInfo(bookUrl)
-    return safeApi(function() return rawResourceInfo(bookUrl) end)
-end
-
-function chapterList(bookUrl)
-    return safeApi(function() return rawChapterList(bookUrl) end)
-end
-
-function chapterContent(chapterUrl)
-    return safeApi(function() return rawChapterContent(chapterUrl) end)
-end
-
-function explore()
-    return safeApi(function() return rawExplore() end)
-end
-
-function exploreSearch(keyword, payload)
-    return safeApi(function() return rawExploreSearch(keyword, payload) end)
-end
-
-function test(content)
-    return safeApi(function() return rawTest(content) end)
-end

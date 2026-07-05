@@ -1,6 +1,6 @@
 --[[
     @name            得奇小说网
-    @package         com.deqixs.novel
+    @package         com.meinil.lime.ai.deqixs
     @content         novel
     @author          Ai
     @logo            https://www.deqixs.cc/favicon.ico
@@ -122,18 +122,18 @@ end
 -- 工具:HTTP + JSON 容错
 -- =====================================================================
 
---- GET 包装,失败返 nil + err;成功返 body
+--- GET 包装,失败 throw error;成功返 body
 local function httpGet(url, headers)
-    local body, err = lime.http.get(url, headers)
-    if err then return nil, err end
-    return body, nil
+    local body, _, err = lime.http.get(url, headers)
+    if err then error("lime.http.get: " .. tostring(err)) end
+    return body
 end
 
---- POST 包装,失败返 nil + err
+--- POST 包装,失败 throw error;成功返 body
 local function httpPost(url, body, headers)
-    local text, err = lime.http.post(url, body, headers)
-    if err then return nil, err end
-    return text, nil
+    local text, _, err = lime.http.post(url, body, headers)
+    if err then error("lime.http.post: " .. tostring(err)) end
+    return text
 end
 
 --- JSON 解码,失败返 nil + err(JSON 解析失败用 pcall 兜)
@@ -270,11 +270,7 @@ function search(keyword, page)
     }
     local body = "searchkey=" .. lime.crypto.urlEncode(tostring(keyword or ""))
         .. "&action=search&searchtype=articlename"
-    local html, err = httpPost(BASE .. "/modules/article/search.php", body, headers)
-    if not html then
-        lime.log.warn("search http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpPost(BASE .. "/modules/article/search.php", body, headers)
 
     local doc = lime.dom.parse(html)
 
@@ -357,11 +353,7 @@ function resourceInfo(bookUrl)
         ["Sec-Fetch-Site"] = "same-origin",
         ["Sec-Fetch-User"] = "?1",
     }
-    local html, err = httpGet(bookUrl, headers)
-    if not html then
-        lime.log.warn("bookInfo http failed: " .. tostring(err))
-        return nil
-    end
+    local html = httpGet(bookUrl, headers)
 
     local doc = lime.dom.parse(html)
 
@@ -455,11 +447,7 @@ function chapterList(bookUrl)
         ["Sec-Fetch-Site"] = "same-origin",
         ["Sec-Fetch-User"] = "?1",
     }
-    local html, err = httpGet(bookUrl, headers)
-    if not html then
-        lime.log.warn("chapterList http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(bookUrl, headers)
 
     local doc = lime.dom.parse(html)
     local links = lime.dom.selectAll(doc, "dl.chapterlist a")
@@ -518,8 +506,7 @@ function chapterContent(chapterUrl)
     if cidMatch then chapterId = cidMatch end
 
     if not articleId or not chapterId then
-        lime.log.warn("Cannot extract IDs from URL: " .. tostring(chapterUrl))
-        return { code = 500, message = "解析章节ID失败", data = nil }
+        error("解析章节ID失败")
     end
 
     local pageHeaders = {
@@ -536,11 +523,7 @@ function chapterContent(chapterUrl)
         ["Sec-Fetch-User"] = "?1",
         ["Referer"] = chapterBase .. "/",
     }
-    local _, err1 = httpGet(chapterUrl, pageHeaders)
-    if err1 then
-        lime.log.warn("chapter page http failed: " .. err1)
-        return { code = 500, message = "获取章节页面失败", data = nil }
-    end
+    httpGet(chapterUrl, pageHeaders)
 
     -- 第 2 步:取 token / timestamp / nonce
     local tokenUrl = chapterBase .. "/scripts/chapter.js.php?aid=" .. articleId
@@ -558,18 +541,13 @@ function chapterContent(chapterUrl)
         ["Sec-Fetch-Site"] = "same-origin",
         ["Referer"] = chapterUrl,
     }
-    local tokenHtml, err2 = httpGet(tokenUrl, tokenHeaders)
-    if not tokenHtml then
-        lime.log.warn("Token request failed: " .. tostring(err2))
-        return { code = 500, message = "获取Token失败", data = nil }
-    end
+    local tokenHtml = httpGet(tokenUrl, tokenHeaders)
 
     local token = tokenHtml:match("var chapterToken = '([^']+)'")
     local timestamp = tokenHtml:match("var timestamp = (%d+)")
     local nonce = tokenHtml:match("var nonce = '([^']+)'")
     if not token or not timestamp or not nonce then
-        lime.log.warn("Token parse failed")
-        return { code = 500, message = "获取章节Token失败", data = nil }
+        error("获取章节Token失败")
     end
 
     -- 第 3 步:调 API
@@ -592,16 +570,11 @@ function chapterContent(chapterUrl)
         ["Sec-Fetch-Mode"] = "cors",
         ["Sec-Fetch-Site"] = "same-origin",
     }
-    local apiResponse, err3 = httpGet(apiUrl, apiHeaders)
-    if not apiResponse then
-        lime.log.warn("API request failed: " .. tostring(err3))
-        return { code = 500, message = "获取章节内容失败", data = nil }
-    end
+    local apiResponse = httpGet(apiUrl, apiHeaders)
 
     local data, err4 = safeJsonDecode(apiResponse)
     if not data then
-        lime.log.warn("JSON parse error: " .. tostring(err4))
-        return { code = 500, message = "解析章节内容失败", data = nil }
+        error("解析章节内容失败: " .. tostring(err4))
     end
     if data and data.status == 1 and data.data and data.data.content then
         -- 契约:返回 ChapterBlock[];txt 块按"段落"拆分,
@@ -624,7 +597,7 @@ function chapterContent(chapterUrl)
         end
         -- 整章无任何非空段落 → 抛错,由后端降级 status=2
         if #blocks == 0 then
-            return { code = 500, message = "章节内容为空", data = nil }
+            error("章节内容为空")
         end
         return blocks
     end
@@ -634,7 +607,7 @@ function chapterContent(chapterUrl)
         msg = msg .. ": " .. tostring(data.message)
     end
     lime.log.warn(msg)
-    return { code = 500, message = msg, data = nil }
+    error(msg)
 end
 
 -- =====================================================================
@@ -695,11 +668,7 @@ function exploreSearch(keyword, payload)
         ["Sec-Fetch-Site"] = "same-origin",
         ["Sec-Fetch-User"] = "?1",
     }
-    local html, err = httpGet(url, headers)
-    if not html then
-        lime.log.warn("exploreSearch http failed: " .. tostring(err))
-        return {}
-    end
+    local html = httpGet(url, headers)
 
     local doc = lime.dom.parse(html)
     local items = lime.dom.selectAll(doc, "div.bookbox")
@@ -732,6 +701,9 @@ function exploreSearch(keyword, payload)
         ::continue::
     end
 
+    if #results == 0 then
+        return {}
+    end
     return results
 end
 
@@ -740,83 +712,29 @@ end
 -- 简单 connectivity check:取探索页第一页,验证站点可达
 -- =====================================================================
 function test(content)
-    local ok, data = pcall(function()
-        local headers = {
-            ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
-            ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
-            ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            ["Accept-Encoding"] = BROWSER_HEADERS["Accept-Encoding"],
-            ["sec-ch-ua"] = BROWSER_HEADERS["sec-ch-ua"],
-            ["sec-ch-ua-platform"] = BROWSER_HEADERS["sec-ch-ua-platform"],
-            ["Upgrade-Insecure-Requests"] = "1",
-            ["Sec-Fetch-Dest"] = "document",
-            ["Sec-Fetch-Mode"] = "navigate",
-            ["Sec-Fetch-Site"] = "none",
-            ["Sec-Fetch-User"] = "?1",
-        }
-        return httpGet(BASE .. "/sort/0/1.html", headers)
-    end)
-    if not ok then
-        lime.log.warn("test failed: " .. tostring(data))
-        return { code = 500, message = "Test failed: " .. tostring(data), data = nil }
-    end
+    local headers = {
+        ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
+        ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
+        ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        ["Accept-Encoding"] = BROWSER_HEADERS["Accept-Encoding"],
+        ["sec-ch-ua"] = BROWSER_HEADERS["sec-ch-ua"],
+        ["sec-ch-ua-platform"] = BROWSER_HEADERS["sec-ch-ua-platform"],
+        ["Upgrade-Insecure-Requests"] = "1",
+        ["Sec-Fetch-Dest"] = "document",
+        ["Sec-Fetch-Mode"] = "navigate",
+        ["Sec-Fetch-Site"] = "none",
+        ["Sec-Fetch-User"] = "?1",
+    }
+    local data = httpGet(BASE .. "/sort/0/1.html", headers)
     if not data or data == "" then
-        return { code = 500, message = "Test failed: empty response", data = nil }
+        error("Test failed: empty response")
     end
     local message = "得奇小说网 reachable, " .. #data .. " bytes from explore"
-    return { code = 0, message = message, data = { ok = true, message = message } }
+    return { ok = true, message = message }
 end
 
--- =====================================================================
--- 统一 Lua ApiResponse 包装:业务入口返回 `{ code, message, data }`。
--- 原实现保留;包装层捕获 Lua error,避免 runtime traceback 直接冒泡到前端。
--- =====================================================================
-local function apiOk(data, message)
-    return { code = 0, message = message or "ok", data = data }
-end
-
-local function apiFail(message, code)
-    return { code = code or 500, message = tostring(message or "unknown error"), data = nil }
-end
-
-local function safeApi(fn)
-    local ok, result = pcall(fn)
-    if ok and type(result) == "table" and result.code ~= nil then return result end
-    if ok then return apiOk(result) end
-    return apiFail(result, 500)
-end
-
-local rawSearch = search
-function search(keyword, page)
-    return safeApi(function() return rawSearch(keyword, page) end)
-end
-
-local rawResourceInfo = resourceInfo
-function resourceInfo(bookUrl)
-    return safeApi(function() return rawResourceInfo(bookUrl) end)
-end
-
-local rawChapterList = chapterList
-function chapterList(bookUrl)
-    return safeApi(function() return rawChapterList(bookUrl) end)
-end
-
-local rawChapterContent = chapterContent
-function chapterContent(chapterUrl)
-    return safeApi(function() return rawChapterContent(chapterUrl) end)
-end
-
-local rawExplore = explore
-function explore()
-    return safeApi(function() return rawExplore() end)
-end
-
-local rawExploreSearch = exploreSearch
-function exploreSearch(keyword, payload)
-    return safeApi(function() return rawExploreSearch(keyword, payload) end)
-end
-
-local rawTest = test
-function test(content)
-    return safeApi(function() return rawTest(content) end)
-end
+-- 顶层入口函数已直接定义在 globals(每个 raw 函数即顶层入口)。
+-- 成功:返回裸数据(array/object/string)
+-- 失败:throw error 字符串
+-- backend runner::invoke 接 mlua::Error → PluginRuntimeError → ApiResponse::error(1101, msg)
+-- decode_lua_response 把裸数据视为 success data(原契约)

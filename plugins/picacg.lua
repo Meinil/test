@@ -1,6 +1,6 @@
 --[[
     @name            Picacg
-    @package         com.picacg.comic
+    @package         com.meinil.lime.ai.picacg
     @content         comic
     @author          ai
     @url             https://www.bikamanhua.com.cn
@@ -155,19 +155,26 @@ end
 --- 底层 HTTP 调度:按 method 调 lime.http.{get,post,put},返回响应字符串。
 --- 抽出来便于 requestJson 与 requestEnvelope 共用 PUT/POST 编码路径。
 local function sendRequest(method, url, headers, payload)
-    local body, err
+    local body, code, err
     if method == "GET" then
-        body, err = lime.http.get(url, headers)
+        body, code, err = lime.http.get(url, headers)
     elseif method == "PUT" then
         local encoded, encodeErr = encodeJson(payload or {})
         if not encoded then return nil, encodeErr end
-        body, err = lime.http.put(url, encoded, headers)
+        body, code, err = lime.http.put(url, encoded, headers)
     else
         local encoded, encodeErr = encodeJson(payload or {})
         if not encoded then return nil, encodeErr end
-        body, err = lime.http.post(url, encoded, headers)
+        body, code, err = lime.http.post(url, encoded, headers)
     end
-    return body, err
+    return body, code, err
+end
+
+local function httpBodyMessage(body)
+    if not body or body == "" then return nil end
+    local json = decodeJson(body)
+    if type(json) ~= "table" then return nil end
+    return json.message or ((json.data or {}).message)
 end
 
 --- 执行 Picacg 请求并返回完整 envelope `{code, message, data}`。
@@ -181,7 +188,7 @@ local function requestEnvelope(method, path, payload, token, form)
     if authToken == nil then authToken = lime.storage.get("token") end
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
-    local body, err = sendRequest(method, url, headers, payload)
+    local body, _, err = sendRequest(method, url, headers, payload)
     if path == "auth/sign-in" then
         if body then
             lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
@@ -189,7 +196,8 @@ local function requestEnvelope(method, path, payload, token, form)
             lime.log.warn("[picacg] login error response: " .. maskLoginResponse(tostring(err or "")))
         end
     end
-    if not body then return nil, "Picacg 请求失败(" .. path .. "): " .. formatHttpError(err) end
+    if err then return nil, httpBodyMessage(body) or ("Picacg 请求失败(" .. path .. "): " .. formatHttpError(err)) end
+    if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
     local json, decodeErr = decodeJson(body)
     if not json then return nil, decodeErr end
     local code = tonumber(json.code)
@@ -206,7 +214,7 @@ local function requestJson(method, path, payload, token, form)
     if authToken == nil then authToken = lime.storage.get("token") end
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
-    local body, err = sendRequest(method, url, headers, payload)
+    local body, _, err = sendRequest(method, url, headers, payload)
     if path == "auth/sign-in" then
         if body then
             lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
@@ -214,7 +222,8 @@ local function requestJson(method, path, payload, token, form)
             lime.log.warn("[picacg] login error response: " .. maskLoginResponse(tostring(err or "")))
         end
     end
-    if not body then return nil, "Picacg 请求失败(" .. path .. "): " .. formatHttpError(err) end
+    if err then return nil, httpBodyMessage(body) or ("Picacg 请求失败(" .. path .. "): " .. formatHttpError(err)) end
+    if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
     local json, decodeErr = decodeJson(body)
     if not json then return nil, decodeErr end
     return json.data or {}, nil
@@ -382,7 +391,7 @@ function search(keyword, page)
         keyword = tostring(keyword or ""),
         sort = "dd",
     })
-    if not data then return { code = 400, message = err, data = nil } end
+    if not data then error(err) end
     return docsToResources(data.comics and data.comics.docs or {})
 end
 
@@ -402,7 +411,7 @@ end
 --- 发现页搜索。
 function exploreSearch(keyword, payload)
     if not lime.storage.get("token") then
-        return { code = 400, message = "请先登录", data = nil }
+        error("请先登录")
     end
     payload = payload or {}
     local filters = payload.filters or {}
@@ -413,7 +422,7 @@ function exploreSearch(keyword, payload)
     if kw ~= "" then
         local path = "comics/advanced-search?page=" .. current
         local data, err = requestJson("POST", path, { keyword = kw, sort = sort })
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         return docsToResources(data.comics and data.comics.docs or {})
     end
 
@@ -421,38 +430,38 @@ function exploreSearch(keyword, payload)
         local category, _ = lime.crypto.urlEncode(filters.category)
         local path = "comics?page=" .. current .. "&c=" .. category .. "&s=" .. sort
         local data, err = requestJson("GET", path)
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         return docsToResources(data.comics and data.comics.docs or {})
     end
 
     local source = filters.source or "latest"
     if source == "random" then
         local data, err = requestJson("GET", "comics/random")
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         return docsToResources(data.comics or {})
     end
     if source == "H24" or source == "D7" or source == "D30" then
         local path = "comics/leaderboard?tt=" .. source .. "&ct=VC"
         local data, err = requestJson("GET", path)
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         return docsToResources(data.comics or {})
     end
 
     local path = "comics?page=" .. current .. "&s=" .. sort
     local data, err = requestJson("GET", path)
-    if not data then return { code = 400, message = err, data = nil } end
+    if not data then error(err) end
     return docsToResources(data.comics and data.comics.docs or {})
 end
 
 --- 拉取漫画详情。
 function resourceInfo(url)
     local id = tostring(url or "")
-    if id == "" then return { code = 400, message = "漫画 ID 为空", data = nil } end
+    if id == "" then error("漫画 ID 为空") end
     if not lime.storage.get("token") then
-        return { code = 400, message = "请先登录", data = nil }
+        error("请先登录")
     end
     local data, err = requestJson("GET", "comics/" .. id)
-    if not data then return { code = 400, message = err, data = nil } end
+    if not data then error(err) end
     local comic = data.comic or {}
     local item = comicToResource(comic)
     item.url = id
@@ -464,16 +473,16 @@ end
 --- 拉取章节列表。
 function chapterList(url)
     local id = tostring(url or "")
-    if id == "" then return { code = 400, message = "漫画 ID 为空", data = nil } end
+    if id == "" then error("漫画 ID 为空") end
     if not lime.storage.get("token") then
-        return { code = 400, message = "请先登录", data = nil }
+        error("请先登录")
     end
     local all = {}
     local page = 1
     while true do
         local path = "comics/" .. id .. "/eps?page=" .. page
         local data, err = requestJson("GET", path)
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         local eps = data.eps or {}
         for _, ep in ipairs(eps.docs or {}) do
             all[#all + 1] = ep
@@ -499,14 +508,14 @@ end
 --- 拉取章节图片。
 function chapterContent(chapterUrl)
     local comicId, epId = tostring(chapterUrl or ""):match("^([^#]+)#(.+)$")
-    if not comicId or not epId then return { code = 400, message = "章节 URL 无效", data = nil } end
+    if not comicId or not epId then error("章节 URL 无效") end
 
     local blocks = {}
     local page = 1
     while true do
         local path = "comics/" .. comicId .. "/order/" .. epId .. "/pages?page=" .. page
         local data, err = requestJson("GET", path)
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         local pages = data.pages or {}
         for _, p in ipairs(pages.docs or {}) do
             local img = imageUrl(p.media)
@@ -525,23 +534,23 @@ function chapterContent(chapterUrl)
         page = page + 1
     end
 
-    if #blocks == 0 then return { code = 500, message = "章节内容为空", data = nil } end
+    if #blocks == 0 then error("章节内容为空") end
     return blocks
 end
 
 --- 冒烟测试。
 function test(content)
     if not lime.storage.get("token") then
-        return { code = 400, message = "未登录: 请在插件更多功能中先登录 Picacg", data = nil }
+        error("未登录: 请在插件更多功能中先登录 Picacg")
     end
     local ok, result = pcall(function()
         local data, err = requestJson("GET", "comics/random")
-        if not data then return { code = 400, message = err, data = nil } end
+        if not data then error(err) end
         local count = data.comics and #data.comics or 0
-        return { code = 0, message = "Picacg 可用,随机漫画 " .. count .. " 本", data = { ok = true, message = "Picacg 可用,随机漫画 " .. count .. " 本" } }
+        return { ok = true, message = "Picacg 可用,随机漫画 " .. count .. " 本" }
     end)
     if ok then return result end
-    return { code = 500, message = tostring(result), data = nil }
+    error(tostring(result))
 end
 
 --- 设置菜单。
@@ -663,10 +672,10 @@ function settingsAction(data)
     local action = data and data.action
     if action == "loginBtn" then
         if not data.username or data.username == "" then
-            return { code = 400, message = "邮箱必填", data = nil }
+            error("邮箱必填")
         end
         if not data.password or data.password == "" then
-            return { code = 400, message = "密码必填", data = nil }
+            error("密码必填")
         end
         if not data.baseUrl or data.baseUrl == "" then
             data.baseUrl = DEFAULT_BASE_URL
@@ -678,104 +687,37 @@ function settingsAction(data)
             data.appChannel = "3"
         end
         local _, err = login(data.username, data.password, data)
-        if err then return { code = 400, message = err, data = nil } end
-        return { code = 0, message = "Picacg 登录成功", data = { ok = true, message = "Picacg 登录成功" } }
+        if err then error(err) end
+        return { ok = true, message = "Picacg 登录成功" }
     elseif action == "registerBtn" then
         local _, err = registerAccount(data, data)
-        if err then return { code = 400, message = err, data = nil } end
-        return { code = 0, message = "注册成功,请用新账号登录", data = { ok = true, message = "注册成功,请用新账号登录" } }
+        if err then error(err) end
+        return { ok = true, message = "注册成功,请用新账号登录" }
     elseif action == "changePasswordBtn" then
         if not lime.storage.get("token") then
-            return { code = 400, message = "未登录: 请先登录 Picacg", data = nil }
+            error("未登录: 请先登录 Picacg")
         end
         local _, err = changeAccountPassword(data.oldPassword, data.newPassword, data)
-        if err then return { code = 400, message = err, data = nil } end
-        return { code = 0, message = "密码已修改", data = { ok = true, message = "密码已修改" } }
+        if err then error(err) end
+        return { ok = true, message = "密码已修改" }
     elseif action == "punchInBtn" then
         if not lime.storage.get("token") then
-            return { code = 400, message = "未登录: 请先登录 Picacg", data = nil }
+            error("未登录: 请先登录 Picacg")
         end
         local _, msg = punchInAccount(data)
-        if not msg then return { code = 400, message = "打卡失败", data = nil } end
-        return { code = 0, message = msg, data = { ok = true, message = msg } }
+        if not msg then error("打卡失败") end
+        return { ok = true, message = msg }
     elseif action == "logoutBtn" then
         lime.storage.remove("token")
         lime.storage.remove("account")
-        return { code = 0, message = "已登出 Picacg", data = { ok = true, message = "已登出 Picacg" } }
+        return { ok = true, message = "已登出 Picacg" }
     end
-    return { code = 400, message = "settingsAction: unknown action '" .. tostring(action) .. "'", data = nil }
+    error("settingsAction: unknown action '" .. tostring(action) .. "'")
 end
 
 -- =====================================================================
--- 统一 Lua ApiResponse 包装:业务入口与 settingsAction 返回 `{ code, message, data }`。
--- settings() 是 schema 声明,保持原数组返回。
+-- 顶层入口:直接返回裸数据(成功)/ throw error(失败)
+-- requestJson/requestEnvelope 内部仍用 envelope 结构(用于 sign-in 等需要 envelope 全字段的场景),
+-- 顶层 raw 函数已转换为 error() 抛出响应体里的 message。
 -- =====================================================================
-local function apiOk(data, message)
-    return { code = 0, message = message or "ok", data = data }
-end
-
-local function apiFail(message, code)
-    return { code = code or 500, message = tostring(message or "unknown error"), data = nil }
-end
-
-local function classifyError(message)
-    local text = tostring(message or "")
-    if text:match("invalid email or password") then return 400 end
-    if text:match("Picacg 请求失败") then return 400 end
-    if text:match("未登录") then return 400 end
-    if text:match("必填") then return 400 end
-    if text:match("unknown action") then return 400 end
-    return 500
-end
-
-local function safeApi(fn)
-    local ok, result = pcall(fn)
-    if ok and type(result) == "table" and result.code ~= nil then return result end
-    if ok then return apiOk(result) end
-    return apiFail(result, classifyError(result))
-end
-
-local rawSearch = search
-function search(keyword, page)
-    return safeApi(function() return rawSearch(keyword, page) end)
-end
-
-local rawExplore = explore
-function explore()
-    return safeApi(function() return rawExplore() end)
-end
-
-local rawSettings = settings
-function settings()
-    return safeApi(function() return rawSettings() end)
-end
-
-local rawExploreSearch = exploreSearch
-function exploreSearch(keyword, payload)
-    return safeApi(function() return rawExploreSearch(keyword, payload) end)
-end
-
-local rawResourceInfo = resourceInfo
-function resourceInfo(url)
-    return safeApi(function() return rawResourceInfo(url) end)
-end
-
-local rawChapterList = chapterList
-function chapterList(url)
-    return safeApi(function() return rawChapterList(url) end)
-end
-
-local rawChapterContent = chapterContent
-function chapterContent(chapterUrl)
-    return safeApi(function() return rawChapterContent(chapterUrl) end)
-end
-
-local rawTest = test
-function test(content)
-    return safeApi(function() return rawTest(content) end)
-end
-
-local rawSettingsAction = settingsAction
-function settingsAction(data)
-    return safeApi(function() return rawSettingsAction(data) end)
 end

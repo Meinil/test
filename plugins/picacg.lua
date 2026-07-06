@@ -6,7 +6,7 @@
     @url             https://www.bikamanhua.com.cn
     @logo            https://www.bikamanhua.com.cn/logo.png
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua
-    @version         1.0.0
+    @version         0.0.1
     @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。
 ]]
 
@@ -720,4 +720,3 @@ end
 -- requestJson/requestEnvelope 内部仍用 envelope 结构(用于 sign-in 等需要 envelope 全字段的场景),
 -- 顶层 raw 函数已转换为 error() 抛出响应体里的 message。
 -- =====================================================================
-end

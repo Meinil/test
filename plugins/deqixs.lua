@@ -6,7 +6,7 @@
     @logo            https://www.deqixs.cc/favicon.ico
     @url             https://www.deqixs.cc
     @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua
-    @version         1.0.10
+    @version         0.0.1
     @description     得奇小说网
 ]]
 

@@ -9,7 +9,7 @@
       "logo": "https://www.bikamanhua.com.cn/logo.png",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua",
       "url": "https://www.bikamanhua.com.cn",
-      "version": "1.0.0",
+      "version": "0.0.1",
       "description": "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。"
     },
     {
@@ -20,7 +20,7 @@
       "logo": "https://www.deqixs.cc/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua",
       "url": "https://www.deqixs.cc",
-      "version": "1.0.10",
+      "version": "0.0.1",
       "description": "得奇小说网"
     },
     {
@@ -31,7 +31,7 @@
       "logo": "https://www.qishuxia.com/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua",
       "url": "https://www.qishuxia.com",
-      "version": "1.1.4",
+      "version": "0.0.1",
       "description": "奇书网 - 好看的小说大全免费在线阅读和 txt 下载"
     },
     {
@@ -42,7 +42,7 @@
       "logo": "https://xn--vcsx64d.alicesw12.xyz/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/alicesw.lua",
       "url": "https://xn--vcsx64d.alicesw12.xyz",
-      "version": "0.2.0",
+      "version": "0.0.1",
       "description": "国内发布页：https://www.asw2.cc/"
     },
     {
@@ -53,7 +53,7 @@
       "logo": "https://m.tianmeixs.com/favicon.ico",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/tianmeixs.lua",
       "url": "https://m.tianmeixs.com",
-      "version": "0.1.0",
+      "version": "0.0.1",
       "description": "Converted from Legado source 天美小说."
     }
   ]

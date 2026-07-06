@@ -5,7 +5,7 @@
     @author          legado-to-lime
     @url             https://m.tianmeixs.com
     @sourceUrl       https://m.tianmeixs.com#🎃
-    @version         0.1.0
+    @version         0.0.1
     @description     Converted from Legado source 天美小说.
 ]]
 

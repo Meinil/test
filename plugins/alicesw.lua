@@ -5,7 +5,7 @@
     @author          ai
     @url             https://xn--vcsx64d.alicesw12.xyz
     @sourceUrl       https://xn--vcsx64d.alicesw12.xyz/
-    @version         0.2.0
+    @version         0.0.1
     @description     国内发布页：https://www.asw2.cc/
 ]]
 

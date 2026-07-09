@@ -230,14 +230,14 @@ local function parseExploreResources(html, baseUrl)
     return out
 end
 
-local function rawSearch(keyword, page)
+function search(keyword, page)
     local url = BASE .. "/s.php"
     local body = "type=articlename&s=" .. encodeGbLike(keyword or "")
     local html = httpPost(url, body, BASE .. "/")
     return parseSearchResources(html, url)
 end
 
-local function rawResourceInfo(bookUrl)
+function resourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -289,10 +289,10 @@ local function parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue,
     end
 end
 
-local function rawChapterList(bookUrl)
+function chapterList(bookUrl)
     local firstUrl = absolutize(bookUrl, BASE)
-    local info = rawResourceInfo(firstUrl)
-    -- rawResourceInfo 失败时 throw,会自动冒泡到 backend
+    local info = resourceInfo(firstUrl)
+    -- resourceInfo 失败时 throw,会自动冒泡到 backend
     if info.tocUrl and info.tocUrl ~= "" then firstUrl = info.tocUrl end
 
     local chapters = {}
@@ -309,7 +309,7 @@ local function rawChapterList(bookUrl)
     return chapters
 end
 
-local function rawChapterContent(chapterUrl)
+function chapterContent(chapterUrl)
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -320,7 +320,7 @@ local function rawChapterContent(chapterUrl)
     return blocks
 end
 
-local function rawExplore()
+function explore()
     local options = {}
     for _, c in ipairs(CATEGORIES) do
         options[#options + 1] = { field = c.field, label = c.label }
@@ -335,7 +335,7 @@ local function rawExplore()
     }
 end
 
-local function rawExploreSearch(keyword, payload)
+function exploreSearch(keyword, payload)
     local selected = CATEGORIES[1]
     local wanted = payload and payload.filters and payload.filters.category
     for _, c in ipairs(CATEGORIES) do
@@ -348,39 +348,9 @@ local function rawExploreSearch(keyword, payload)
     return parseExploreResources(html, url)
 end
 
-local function rawTest(content)
+function test(content)
     local html = httpGet(BASE .. "/sort/1_1/", BASE .. "/")
     local count = #parseExploreResources(html, BASE .. "/sort/1_1/")
     local message = "天美小说 explore smoke path returned " .. tostring(count) .. " items"
     return { ok = true, message = message }
-end
-
--- 顶层入口函数已直接定义在 globals(每个 raw 函数即顶层入口)。
--- 成功:返回裸数据,失败:throw error。
-function search(keyword, page)
-    return rawSearch(keyword, page)
-end
-
-function resourceInfo(bookUrl)
-    return rawResourceInfo(bookUrl)
-end
-
-function chapterList(bookUrl)
-    return rawChapterList(bookUrl)
-end
-
-function chapterContent(chapterUrl)
-    return rawChapterContent(chapterUrl)
-end
-
-function explore()
-    return rawExplore()
-end
-
-function exploreSearch(keyword, payload)
-    return rawExploreSearch(keyword, payload)
-end
-
-function test(content)
-    return rawTest(content)
 end

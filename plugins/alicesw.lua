@@ -322,18 +322,18 @@ local function fetchUrl(urlTemplate, keyword, page)
     return httpGet(url, BASE .. "/"), url
 end
 
-local function rawSearch(keyword, page)
+function search(keyword, page)
     local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
     return parseSearchResources(html, finalUrl)
 end
 
-local function rawResourceInfo(bookUrl)
+function resourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     return parseDetail(html, fullUrl)
 end
 
-local function rawChapterList(bookUrl)
+function chapterList(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     if fullUrl:find("/novel/", 1, true) then fullUrl = tocUrlFromBookUrl(fullUrl) end
     local html = httpGet(fullUrl, BASE .. "/")
@@ -352,7 +352,7 @@ local function rawChapterList(bookUrl)
     return chapters
 end
 
-local function rawChapterContent(chapterUrl)
+function chapterContent(chapterUrl)
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -371,7 +371,7 @@ local function rawChapterContent(chapterUrl)
     return blocks
 end
 
-local function rawExplore()
+function explore()
     local options = {}
     for _, c in ipairs(CATEGORIES) do options[#options + 1] = { field = c.field, label = c.label } end
     return {
@@ -379,7 +379,7 @@ local function rawExplore()
     }
 end
 
-local function rawExploreSearch(keyword, payload)
+function exploreSearch(keyword, payload)
     local selected = CATEGORIES[1]
     local wanted = payload and payload.filters and payload.filters.category
     for _, c in ipairs(CATEGORIES) do
@@ -390,37 +390,9 @@ local function rawExploreSearch(keyword, payload)
     return parseRankResources(html, finalUrl)
 end
 
-local function rawTest(content)
-    local results = rawSearch(content or "美母为妻", 1)
+function test(content)
+    local results = search(content or "美母为妻", 1)
     local count = type(results) == "table" and #results or 0
     local message = "爱丽丝书屋 smoke path returned " .. tostring(count) .. " items"
     return { ok = true, message = message }
-end
-
-function search(keyword, page)
-    return rawSearch(keyword, page)
-end
-
-function resourceInfo(bookUrl)
-    return rawResourceInfo(bookUrl)
-end
-
-function chapterList(bookUrl)
-    return rawChapterList(bookUrl)
-end
-
-function chapterContent(chapterUrl)
-    return rawChapterContent(chapterUrl)
-end
-
-function explore()
-    return rawExplore()
-end
-
-function exploreSearch(keyword, payload)
-    return rawExploreSearch(keyword, payload)
-end
-
-function test(content)
-    return rawTest(content)
 end

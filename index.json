@@ -2,23 +2,54 @@
   "version": 1,
   "plugins": [
     {
+      "name": "小秋音乐",
+      "package": "com.huibq.xiaoqiu.lime",
+      "content": "audio",
+      "author": "ai",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/xiaoqiu.lua",
+      "version": "1.0.0",
+      "description": "参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源"
+    },
+    {
+      "name": "japaneseasmr",
+      "package": "com.example.japaneseasmr.lime",
+      "content": "audio",
+      "author": "ai",
+      "logo": "https://japaneseasmr.com/favicon.ico",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
+      "url": "https://japaneseasmr.com",
+      "version": "0.0.1",
+      "description": "japaneseasmr"
+    },
+    {
       "name": "Picacg",
       "package": "com.meinil.lime.ai.picacg",
       "content": "comic",
       "author": "ai",
       "logo": "https://www.bikamanhua.com.cn/logo.png",
-      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua",
       "url": "https://www.bikamanhua.com.cn",
       "version": "0.0.1",
       "description": "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。"
     },
     {
+      "name": "爱丽丝书屋",
+      "package": "com.meinil.lime.ai.alicesw",
+      "content": "novel",
+      "author": "ai",
+      "logo": "https://xn--vcsx64d.alicesw12.xyz/favicon.ico",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
+      "url": "https://xn--vcsx64d.alicesw12.xyz",
+      "version": "0.0.1",
+      "description": "国内发布页：https://www.asw2.cc/"
+    },
+    {
       "name": "得奇小说网",
       "package": "com.meinil.lime.ai.deqixs",
       "content": "novel",
-      "author": "Ai",
+      "author": "ai",
       "logo": "https://www.deqixs.cc/favicon.ico",
-      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
       "url": "https://www.deqixs.cc",
       "version": "0.0.1",
       "description": "得奇小说网"
@@ -27,31 +58,20 @@
       "name": "奇书网",
       "package": "com.meinil.lime.ai.qishuxia",
       "content": "novel",
-      "author": "Ai",
+      "author": "ai",
       "logo": "https://www.qishuxia.com/favicon.ico",
-      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua",
       "url": "https://www.qishuxia.com",
       "version": "0.0.1",
       "description": "奇书网 - 好看的小说大全免费在线阅读和 txt 下载"
     },
     {
-      "name": "爱丽丝书屋",
-      "package": "com.meinil.lime.ai.alicesw",
-      "content": "novel",
-      "author": "ai",
-      "logo": "https://xn--vcsx64d.alicesw12.xyz/favicon.ico",
-      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/alicesw.lua",
-      "url": "https://xn--vcsx64d.alicesw12.xyz",
-      "version": "0.0.1",
-      "description": "国内发布页：https://www.asw2.cc/"
-    },
-    {
       "name": "天美小说",
       "package": "com.meinil.lime.ai.tianmeixs",
       "content": "novel",
-      "author": "legado-to-lime",
+      "author": "ai",
       "logo": "https://m.tianmeixs.com/favicon.ico",
-      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/tianmeixs.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/tianmeixs.lua",
       "url": "https://m.tianmeixs.com",
       "version": "0.0.1",
       "description": "Converted from Legado source 天美小说."

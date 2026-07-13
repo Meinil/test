@@ -5,7 +5,7 @@
     @author          ai
     @url             https://www.bikamanhua.com.cn
     @logo            https://www.bikamanhua.com.cn/logo.png
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/picacg.lua
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua
     @version         0.0.1
     @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。
 ]]
@@ -116,20 +116,6 @@ local function decodeJson(body)
     return data, nil
 end
 
---- 尝试从 Picacg 错误响应中提取可读信息。
-local function formatHttpError(err)
-    local text = tostring(err or "")
-    local jsonText = text:match("HTTP %d+[^:]*:%s*(%{.*)$")
-    if jsonText then
-        local data = decodeJson(jsonText)
-        if data then
-            local message = data.message or data.error or (data.data and data.data.message)
-            if message then return tostring(message) end
-        end
-    end
-    return text
-end
-
 --- 登录响应日志脱敏,避免完整 token 落到日志。
 local function maskLoginResponse(s)
     if not s then return "" end
@@ -155,19 +141,19 @@ end
 --- 底层 HTTP 调度:按 method 调 lime.http.{get,post,put},返回响应字符串。
 --- 抽出来便于 requestJson 与 requestEnvelope 共用 PUT/POST 编码路径。
 local function sendRequest(method, url, headers, payload)
-    local body, code, err
+    local response
     if method == "GET" then
-        body, code, err = lime.http.get(url, headers)
+        response = lime.http.get(url, headers)
     elseif method == "PUT" then
         local encoded, encodeErr = encodeJson(payload or {})
         if not encoded then return nil, encodeErr end
-        body, code, err = lime.http.put(url, encoded, headers)
+        response = lime.http.put(url, encoded, headers)
     else
         local encoded, encodeErr = encodeJson(payload or {})
         if not encoded then return nil, encodeErr end
-        body, code, err = lime.http.post(url, encoded, headers)
+        response = lime.http.post(url, encoded, headers)
     end
-    return body, code, err
+    return response, nil
 end
 
 local function httpBodyMessage(body)
@@ -188,15 +174,18 @@ local function requestEnvelope(method, path, payload, token, form)
     if authToken == nil then authToken = lime.storage.get("token") end
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
-    local body, _, err = sendRequest(method, url, headers, payload)
+    local response, requestError = sendRequest(method, url, headers, payload)
+    if requestError then return nil, requestError end
+    local body = response.body
     if path == "auth/sign-in" then
         if body then
             lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
-        else
-            lime.log.warn("[picacg] login error response: " .. maskLoginResponse(tostring(err or "")))
         end
     end
-    if err then return nil, httpBodyMessage(body) or ("Picacg 请求失败(" .. path .. "): " .. formatHttpError(err)) end
+    if response.status < 200 or response.status >= 300 then
+        local detail = httpBodyMessage(body) or ("HTTP " .. tostring(response.status))
+        return nil, "Picacg 请求失败(" .. path .. "): " .. detail
+    end
     if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
     local json, decodeErr = decodeJson(body)
     if not json then return nil, decodeErr end
@@ -214,15 +203,18 @@ local function requestJson(method, path, payload, token, form)
     if authToken == nil then authToken = lime.storage.get("token") end
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
-    local body, _, err = sendRequest(method, url, headers, payload)
+    local response, requestError = sendRequest(method, url, headers, payload)
+    if requestError then return nil, requestError end
+    local body = response.body
     if path == "auth/sign-in" then
         if body then
             lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
-        else
-            lime.log.warn("[picacg] login error response: " .. maskLoginResponse(tostring(err or "")))
         end
     end
-    if err then return nil, httpBodyMessage(body) or ("Picacg 请求失败(" .. path .. "): " .. formatHttpError(err)) end
+    if response.status < 200 or response.status >= 300 then
+        local detail = httpBodyMessage(body) or ("HTTP " .. tostring(response.status))
+        return nil, "Picacg 请求失败(" .. path .. "): " .. detail
+    end
     if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
     local json, decodeErr = decodeJson(body)
     if not json then return nil, decodeErr end
@@ -246,7 +238,7 @@ local function comicToResource(comic)
         name = trim(comic.title),
         author = trim(comic.author),
         url = tostring(comic._id or ""),
-        coverUrl = imageUrl(comic.thumb),
+        cover = trim(imageUrl(comic.thumb)) ~= "" and { url = imageUrl(comic.thumb) } or nil,
         intro = trim(comic.description),
         latestChapter = "",
         latestUpdateTime = parseIsoTimestamp(comic.updated_at),
@@ -419,11 +411,19 @@ function exploreSearch(keyword, payload)
     local sort = filters.sort or "dd"
     local kw = trim(keyword or payload.keyword)
 
+    local function pageResult(comics)
+        comics = comics or {}
+        local result = { records = docsToResources(comics.docs or {}) }
+        local total = tonumber(comics.total)
+        if total and total >= 0 and total == math.floor(total) then result.total = total end
+        return result
+    end
+
     if kw ~= "" then
         local path = "comics/advanced-search?page=" .. current
         local data, err = requestJson("POST", path, { keyword = kw, sort = sort })
         if not data then error(err) end
-        return docsToResources(data.comics and data.comics.docs or {})
+        return pageResult(data.comics)
     end
 
     if filters.category and filters.category ~= "" then
@@ -431,26 +431,26 @@ function exploreSearch(keyword, payload)
         local path = "comics?page=" .. current .. "&c=" .. category .. "&s=" .. sort
         local data, err = requestJson("GET", path)
         if not data then error(err) end
-        return docsToResources(data.comics and data.comics.docs or {})
+        return pageResult(data.comics)
     end
 
     local source = filters.source or "latest"
     if source == "random" then
         local data, err = requestJson("GET", "comics/random")
         if not data then error(err) end
-        return docsToResources(data.comics or {})
+        return { records = docsToResources(data.comics or {}) }
     end
     if source == "H24" or source == "D7" or source == "D30" then
         local path = "comics/leaderboard?tt=" .. source .. "&ct=VC"
         local data, err = requestJson("GET", path)
         if not data then error(err) end
-        return docsToResources(data.comics or {})
+        return { records = docsToResources(data.comics or {}) }
     end
 
     local path = "comics?page=" .. current .. "&s=" .. sort
     local data, err = requestJson("GET", path)
     if not data then error(err) end
-    return docsToResources(data.comics and data.comics.docs or {})
+    return pageResult(data.comics)
 end
 
 --- 拉取漫画详情。
@@ -506,7 +506,8 @@ function chapterList(url)
 end
 
 --- 拉取章节图片。
-function chapterContent(chapterUrl)
+function chapterContent(request)
+    local chapterUrl = request.chapter.url
     local comicId, epId = tostring(chapterUrl or ""):match("^([^#]+)#(.+)$")
     if not comicId or not epId then error("章节 URL 无效") end
 
@@ -521,11 +522,15 @@ function chapterContent(chapterUrl)
             local img = imageUrl(p.media)
             if img ~= "" then
                 blocks[#blocks + 1] = {
-                    type = "img",
-                    content = img,
-                    headers = {
-                        ["User-Agent"] = USER_AGENT,
-                        ["Accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                    id = "image-" .. tostring(#blocks + 1),
+                    type = "image",
+                    source = {
+                        id = "image-source-" .. tostring(#blocks + 1),
+                        url = img,
+                        headers = {
+                            ["User-Agent"] = USER_AGENT,
+                            ["Accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                        },
                     },
                 }
             end
@@ -535,7 +540,7 @@ function chapterContent(chapterUrl)
     end
 
     if #blocks == 0 then error("章节内容为空") end
-    return blocks
+    return { blocks = blocks }
 end
 
 --- 冒烟测试。

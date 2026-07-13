@@ -2,9 +2,9 @@
     @name            天美小说
     @package         com.meinil.lime.ai.tianmeixs
     @content         novel
-    @author          legado-to-lime
+    @author          ai
     @url             https://m.tianmeixs.com
-    @sourceUrl       https://m.tianmeixs.com#🎃
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/tianmeixs.lua
     @version         0.0.1
     @description     Converted from Legado source 天美小说.
 ]]
@@ -83,17 +83,21 @@ local function documentHeaders(referer)
 end
 
 local function httpGet(url, referer)
-    local body, _, err = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
-    if err then error("lime.http.get: " .. tostring(err)) end
-    return body
+    local response = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.get: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 local function httpPost(url, body, referer)
     local headers = documentHeaders(referer or BASE .. "/")
     headers["Content-Type"] = "application/x-www-form-urlencoded"
-    local text, _, err = lime.http.post(url, body, headers)
-    if err then error("lime.http.post: " .. tostring(err)) end
-    return text
+    local response = lime.http.post(url, body, headers)
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.post: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 local function encodeGbLike(value)
@@ -127,7 +131,9 @@ local function blocksFromText(raw)
     local blocks = {}
     for para in tostring(raw or ""):gmatch("[^\n]+") do
         para = trim(para)
-        if para ~= "" then blocks[#blocks + 1] = { type = "txt", content = para } end
+        if para ~= "" then
+            blocks[#blocks + 1] = { id = "text-" .. tostring(#blocks + 1), type = "text", text = para }
+        end
     end
     return blocks
 end
@@ -175,7 +181,7 @@ local function parseSearchResources(html, baseUrl)
                 name = name,
                 author = text(authorEl),
                 url = url,
-                coverUrl = buildCoverUrl(url),
+                cover = { url = buildCoverUrl(url) },
                 intro = "",
                 latestChapter = "",
                 latestChapterUrl = "",
@@ -205,16 +211,16 @@ local function parseExploreResources(html, baseUrl)
         local author = cleanLabel(text(spans[2]), "作者：")
         local intro = text(spans[3])
         local kind = text(spans[#spans])
-        local coverUrl = absolutize(selectAttr(sub, "img", "src"), baseUrl)
-        if coverUrl:find("/explore_search_files/", 1, true) or coverUrl:find("/css/noimg.jpg", 1, true) then
-            coverUrl = buildCoverUrl(url)
+        local coverImageUrl = absolutize(selectAttr(sub, "img", "src"), baseUrl)
+        if coverImageUrl:find("/explore_search_files/", 1, true) or coverImageUrl:find("/css/noimg.jpg", 1, true) then
+            coverImageUrl = buildCoverUrl(url)
         end
         if name ~= "" and url ~= "" then
             out[#out + 1] = {
                 name = name,
                 author = author,
                 url = url,
-                coverUrl = coverUrl,
+                cover = coverImageUrl ~= "" and { url = coverImageUrl } or nil,
                 intro = intro,
                 latestChapter = "",
                 latestChapterUrl = "",
@@ -255,7 +261,10 @@ function resourceInfo(bookUrl)
         name = name,
         author = author,
         url = fullUrl,
-        coverUrl = absolutize(selectAttr(doc, "#xinxi .xsfm img", "src"), fullUrl),
+        cover = (function()
+            local value = absolutize(selectAttr(doc, "#xinxi .xsfm img", "src"), fullUrl)
+            return value ~= "" and { url = value } or nil
+        end)(),
         intro = selectText(doc, "#xinxi div:last-child"),
         latestChapter = latestChapter,
         latestChapterUrl = "",
@@ -309,7 +318,8 @@ function chapterList(bookUrl)
     return chapters
 end
 
-function chapterContent(chapterUrl)
+function chapterContent(request)
+    local chapterUrl = request.chapter.url
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -317,7 +327,7 @@ function chapterContent(chapterUrl)
     local raw = contentEl and lime.dom.html(contentEl) or ""
     local blocks = blocksFromText(htmlToText(raw))
     if #blocks == 0 then error("章节内容为空") end
-    return blocks
+    return { blocks = blocks }
 end
 
 function explore()
@@ -345,7 +355,7 @@ function exploreSearch(keyword, payload)
     local url = absolutize(selected.url:gsub("{{page}}", tostring(page)), BASE)
     lime.log.info("url" .. url)
     local html = httpGet(url, BASE .. "/")
-    return parseExploreResources(html, url)
+    return { records = parseExploreResources(html, url) }
 end
 
 function test(content)

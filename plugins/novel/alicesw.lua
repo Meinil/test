@@ -4,7 +4,7 @@
     @content         novel
     @author          ai
     @url             https://xn--vcsx64d.alicesw12.xyz
-    @sourceUrl       https://xn--vcsx64d.alicesw12.xyz/
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua
     @version         0.0.1
     @description     国内发布页：https://www.asw2.cc/
 ]]
@@ -122,9 +122,11 @@ local function documentHeaders(referer)
 end
 
 local function httpGet(url, referer)
-    local body, _, err = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
-    if err then error("lime.http.get: " .. tostring(err)) end
-    return body
+    local response = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.get: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 local function encodeUrl(textValue)
@@ -181,7 +183,9 @@ local function blocksFromText(raw)
     local blocks = {}
     for para in tostring(raw or ""):gmatch("[^\n]+") do
         para = trim(para)
-        if para ~= "" then blocks[#blocks + 1] = { type = "txt", content = para } end
+        if para ~= "" then
+            blocks[#blocks + 1] = { id = "text-" .. tostring(#blocks + 1), type = "text", text = para }
+        end
     end
     return blocks
 end
@@ -205,7 +209,7 @@ local function resourceFromRankItem(item, baseUrl)
         name = text(titleEl),
         author = selectText(doc, "li.four"),
         url = url,
-        coverUrl = "",
+        cover = nil,
         intro = "",
         latestChapter = text(latestEl),
         latestChapterUrl = latestUrl,
@@ -247,7 +251,7 @@ local function parseSearchResources(html, baseUrl)
                 name = name,
                 author = author,
                 url = url,
-                coverUrl = "",
+                cover = nil,
                 intro = selectText(sub, "p.content-txt"),
                 latestChapter = "",
                 latestChapterUrl = "",
@@ -300,7 +304,7 @@ local function parseDetail(html, url)
         name = name,
         author = author,
         url = url,
-        coverUrl = absolutize(cover, url),
+        cover = absolutize(cover, url) ~= "" and { url = absolutize(cover, url) } or nil,
         intro = intro,
         latestChapter = text(latestEl),
         latestChapterUrl = absolutize(attr(latestEl, "href"), url),
@@ -352,7 +356,8 @@ function chapterList(bookUrl)
     return chapters
 end
 
-function chapterContent(chapterUrl)
+function chapterContent(request)
+    local chapterUrl = request.chapter.url
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -368,7 +373,7 @@ function chapterContent(chapterUrl)
     end
     local blocks = blocksFromText(table.concat(chunks, "\n"))
     if #blocks == 0 then error("章节内容为空") end
-    return blocks
+    return { blocks = blocks }
 end
 
 function explore()
@@ -387,7 +392,7 @@ function exploreSearch(keyword, payload)
     end
     local page = payload and tonumber(payload.current) or 1
     local html, finalUrl = fetchUrl(selected.url, keyword, page)
-    return parseRankResources(html, finalUrl)
+    return { records = parseRankResources(html, finalUrl) }
 end
 
 function test(content)

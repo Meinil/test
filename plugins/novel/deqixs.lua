@@ -5,7 +5,7 @@
     @author          Ai
     @logo            https://www.deqixs.cc/favicon.ico
     @url             https://www.deqixs.cc
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/deqixs.lua
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua
     @version         0.0.1
     @description     得奇小说网
 ]]
@@ -124,16 +124,20 @@ end
 
 --- GET 包装,失败 throw error;成功返 body
 local function httpGet(url, headers)
-    local body, _, err = lime.http.get(url, headers)
-    if err then error("lime.http.get: " .. tostring(err)) end
-    return body
+    local response = lime.http.get(url, headers)
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.get: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 --- POST 包装,失败 throw error;成功返 body
 local function httpPost(url, body, headers)
-    local text, _, err = lime.http.post(url, body, headers)
-    if err then error("lime.http.post: " .. tostring(err)) end
-    return text
+    local response = lime.http.post(url, body, headers)
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.post: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 --- JSON 解码,失败返 nil + err(JSON 解析失败用 pcall 兜)
@@ -233,13 +237,13 @@ local function extractWordCount(doc, html)
 end
 
 --- 通用 BookItem 构造器(对应 ResourceDetailVO,必填 name/author/url)
-local function buildBookItem(name, author, bookUrl, coverUrl, lastChapter, opts)
+local function buildBookItem(name, author, bookUrl, coverImageUrl, lastChapter, opts)
     opts = opts or {}
     return {
         name              = trim(name),
         author            = trim(author or ""),
         url               = bookUrl,
-        coverUrl          = coverUrl or "",
+        cover             = coverImageUrl and coverImageUrl ~= "" and { url = coverImageUrl } or nil,
         intro             = "",
         wordCount         = opts.wordCount or 0,
         latestChapter     = trim(lastChapter or ""),
@@ -361,7 +365,7 @@ function resourceInfo(bookUrl)
     local authorEl = lime.dom.select(doc, 'a.red[title^="作者"]')
     local authorRaw = authorEl and lime.dom.attr(authorEl, "title") or ""
     local author = authorRaw:gsub("作者：", "")
-    local coverUrl = selectAttr(doc, "img.thumbnail", "src") or ""
+    local coverImageUrl = selectAttr(doc, "img.thumbnail", "src") or ""
 
     -- 简介(scraper text() 不含属性,无需 legado.dom.remove)
     local intro = selectText(doc, "p.bookintro")
@@ -415,7 +419,7 @@ function resourceInfo(bookUrl)
         name              = trim(title),
         author            = trim(author),
         url               = bookUrl,
-        coverUrl          = coverUrl,
+        cover             = coverImageUrl ~= "" and { url = coverImageUrl } or nil,
         intro             = trim(intro),
         wordCount         = wordCount,
         latestChapter     = trim(lastChapter),
@@ -486,11 +490,12 @@ end
 -- 章节正文 chapterContent(chapterUrl)
 -- 三步反爬流程:拉页 → 拿 token → 调 API
 -- 返回值是 `ChapterBlock[]` 数组(见 Plugin.md §2 / chapterContent 契约):
---   { type = "txt", content = "正文..." }
---   { type = "img", content = "https://...", headers = { ... } }
+--   { id = "text-1", type = "text", text = "正文..." }
+--   { id = "image-1", type = "image", source = { id = "image-source-1", url = "https://...", headers = { ... } } }
 -- 错误处理返回非 0 code,后端把 message 写入失败链路。
 -- =====================================================================
-function chapterContent(chapterUrl)
+function chapterContent(request)
+    local chapterUrl = request.chapter.url
     local chapterBase = originOf(chapterUrl)
 
     -- 解析 URL 中的 articleId / chapterId
@@ -591,7 +596,11 @@ function chapterContent(chapterUrl)
                 if #blocks == 0 and isChapterTitleLine(para) then
                     goto continue
                 end
-                table.insert(blocks, { type = "txt", content = para })
+                table.insert(blocks, {
+                    id = "text-" .. tostring(#blocks + 1),
+                    type = "text",
+                    text = para,
+                })
             end
             ::continue::
         end
@@ -599,7 +608,7 @@ function chapterContent(chapterUrl)
         if #blocks == 0 then
             error("章节内容为空")
         end
-        return blocks
+        return { blocks = blocks }
     end
 
     local msg = "获取章节内容失败"
@@ -634,8 +643,8 @@ end
 
 -- =====================================================================
 -- 探索页搜索 exploreSearch(keyword, payload) — 可选
--- payload = { keyword, filters = { [field] = value }, current, size }
--- 返回 ResourceDetailVO[]:与 search() 同结构
+-- payload = { keyword, filters = { [field] = value }, current }
+-- 返回 { records = ResourceDetailVO[], total? }
 -- content 字段可选;前端 fallback 链:book.content ?? plugin.content ?? 'novel'
 -- =====================================================================
 function exploreSearch(keyword, payload)
@@ -673,7 +682,7 @@ function exploreSearch(keyword, payload)
     local doc = lime.dom.parse(html)
     local items = lime.dom.selectAll(doc, "div.bookbox")
     if not items or #items == 0 then
-        return {}
+        return { records = {} }
     end
 
     local results = {}
@@ -702,9 +711,9 @@ function exploreSearch(keyword, payload)
     end
 
     if #results == 0 then
-        return {}
+        return { records = {} }
     end
-    return results
+    return { records = results }
 end
 
 -- =====================================================================

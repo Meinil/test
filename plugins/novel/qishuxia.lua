@@ -5,7 +5,7 @@
     @author          Ai
     @url             https://www.qishuxia.com
     @logo            https://www.qishuxia.com/favicon.ico
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/qishuxia.lua
+    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua
     @version         0.0.1
     @description     奇书网 - 好看的小说大全免费在线阅读和 txt 下载
 ]]
@@ -145,20 +145,24 @@ end
 
 --- GET 包装,失败 throw error(包含 reqwest err);成功返 body
 local function httpGet(url, headers)
-    local body, code, err = lime.http.get(url, headers)
-    if err and code == 2203 and body and body:find("window.location.href", 1, true) then
+    local response = lime.http.get(url, headers)
+    if response.status == 403 and response.body and response.body:find("window.location.href", 1, true) then
         lime.log.info("httpGet: retry after 403 js redirect challenge")
-        body, code, err = lime.http.get(url, headers)
+        response = lime.http.get(url, headers)
     end
-    if err then error("lime.http.get: " .. tostring(err)) end
-    return body
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.get: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 --- POST 包装,失败 throw error;成功返 body
 local function httpPost(url, body, headers)
-    local text, _, err = lime.http.post(url, body, headers)
-    if err then error("lime.http.post: " .. tostring(err)) end
-    return text
+    local response = lime.http.post(url, body, headers)
+    if response.status < 200 or response.status >= 300 then
+        error("lime.http.post: HTTP " .. tostring(response.status))
+    end
+    return response.body
 end
 
 -- =====================================================================
@@ -219,13 +223,13 @@ end
 -- =====================================================================
 
 --- 通用 BookItem 构造器(对应 ResourceDetailVO,必填 name/author/url/chapterCount)
-local function buildBookItem(name, author, bookUrl, coverUrl, lastChapter, opts)
+local function buildBookItem(name, author, bookUrl, coverImageUrl, lastChapter, opts)
     opts = opts or {}
     return {
         name          = trim(name),
         author        = trim(author or ""),
         url           = bookUrl,
-        coverUrl      = coverUrl or "",
+        cover         = coverImageUrl and coverImageUrl ~= "" and { url = coverImageUrl } or nil,
         intro         = opts.intro or "",
         latestChapter = trim(lastChapter or ""),
         chapterCount  = opts.chapterCount or 0,
@@ -238,12 +242,12 @@ end
 
 --- 从书籍详情页 HTML 中提取 og: meta 信息
 --- @param html string
---- @return table 包含 name/author/coverUrl/intro/kind/lastChapter 字段
+--- @return table 包含 name/author/coverImageUrl/intro/kind/lastChapter 字段
 local function parseBookInfoHtml(html)
     local result = {
         name             = "",
         author           = "",
-        coverUrl         = "",
+        coverImageUrl    = "",
         intro            = "",
         kind             = "",
         lastChapter      = "",
@@ -272,7 +276,7 @@ local function parseBookInfoHtml(html)
     trySet("author", {
         '<meta property="og:novel:author" content="([^"]+)"',
     })
-    trySet("coverUrl", {
+    trySet("coverImageUrl", {
         '<meta property="og:image" content="([^"]+)"',
     })
     trySet("intro", {
@@ -350,7 +354,7 @@ local function parseBooks(doc, defaultKind, isSearch)
 end
 
 -- =====================================================================
--- 工具:站点预热(见 §4.1 cookies.warm)
+-- 工具:站点预热(普通 GET 的 Set-Cookie 会由 Rust 自动接收)
 -- =====================================================================
 
 --- 预热站点 cookie:首次访问必返 403 + Set-Cookie,reqwest 把 cookie 入 jar 后
@@ -370,7 +374,7 @@ local function warmSite()
         ["Sec-Fetch-Site"]           = "none",
         ["Sec-Fetch-User"]           = "?1",
     }
-    pcall(lime.http.cookies.warm, BASE .. "/", headers)
+    pcall(lime.http.get, BASE .. "/", headers)
 end
 
 -- =====================================================================
@@ -385,7 +389,7 @@ function search(keyword, page)
 
     -- 预热搜索页,触发服务端写入 jieqiVisitTime=jieqiArticlesearchTime=...
     -- warmSite 只 warm 了主页,这里补一次 search.php 以让 jieqi CMS 反爬 cookie 入 jar
-    pcall(lime.http.cookies.warm, BASE .. "/modules/article/search.php", {
+    pcall(lime.http.get, BASE .. "/modules/article/search.php", {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
         ["Accept"]                   = BROWSER_HEADERS["Accept"],
         ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
@@ -467,7 +471,7 @@ function resourceInfo(bookUrl)
     end
     return buildBookItem(
         info.name, info.author, fullUrl,
-        absolutize(info.coverUrl),
+        absolutize(info.coverImageUrl),
         info.lastChapter,
         {
             intro        = info.intro,
@@ -542,7 +546,8 @@ end
 -- 错误处理:error("<消息>") 抛出,backend 映成 1101(见 Plugin.md §2.6)
 -- =====================================================================
 
-function chapterContent(chapterUrl)
+function chapterContent(request)
+    local chapterUrl = request.chapter.url
     lime.log.info("chapterContent: " .. tostring(chapterUrl))
     warmSite()
     local headers = {
@@ -589,10 +594,14 @@ function chapterContent(chapterUrl)
 
     local blocks = {}
     for _, para in ipairs(paragraphs) do
-        blocks[#blocks + 1] = { type = "txt", content = para }
+        blocks[#blocks + 1] = {
+            id = "text-" .. tostring(#blocks + 1),
+            type = "text",
+            text = para,
+        }
     end
     lime.log.info("chapterContent: url=" .. tostring(chapterUrl) .. " blocks=" .. #blocks)
-    return blocks
+    return { blocks = blocks }
 end
 
 -- =====================================================================
@@ -617,8 +626,8 @@ end
 
 -- =====================================================================
 -- 探索页搜索 exploreSearch(keyword, payload) — 可选
--- payload = { keyword, filters = { [field] = value }, current, size }
--- 返回 ResourceDetailVO[]:与 search() 同结构
+-- payload = { keyword, filters = { [field] = value }, current }
+-- 返回 { records = ResourceDetailVO[], total? }
 -- 站点发现页是分类目录页(/<catId>[/N.html]),关键字不可用,直接忽略
 -- =====================================================================
 
@@ -661,7 +670,7 @@ function exploreSearch(keyword, payload)
     local html = httpGet(url, headers)
 
     local doc = lime.dom.parse(html)
-    return parseBooks(doc, "", false)
+    return { records = parseBooks(doc, "", false) }
 end
 
 -- =====================================================================

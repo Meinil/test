@@ -1,14 +1,3 @@
---[[
-    @name            小秋音乐
-    @package         com.huibq.xiaoqiu.lime
-    @content         audio
-    @author          ai
-    @source_url      https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/xiaoqiu.lua
-    @version         1.0.0
-    @description     参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源
-    Upstream: https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js
-]]
-
 local API = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 local PLAY_API = "https://lxmusicapi.onrender.com/url/tx/"
 local PAGE_SIZE = 20
@@ -60,21 +49,21 @@ local function resourceOf(song)
     }
 end
 
-function search(keyword, page)
+local function search(keyword, page)
     local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = tonumber(page) or 1, query = tostring(keyword or ""), search_type = 0 } } })
     local list = (((data.req_1 or {}).data or {}).body or {}).song or {}; local out = {}
     for _, song in ipairs(list.list or {}) do if trim(song.mid or song.songmid) ~= "" then out[#out + 1] = resourceOf(song) end end
     return out
 end
 
-function resourceInfo(url)
+local function resourceInfo(url)
     local mid = songMidFromUrl(url); if not mid then error("无效的 QQ 单曲 URL") end
     local data = postJson({ req_0 = { module = "music.pf_song_detail_svr", method = "get_song_detail_yqq", param = { song_mid = mid } } })
     local song = ((data.req_0 or {}).data or {}).track_info; if not song then error("未找到单曲详情") end
     return resourceOf(song)
 end
 
-function chapterList(resourceUrl)
+local function chapterList(resourceUrl)
     if not songMidFromUrl(resourceUrl) then error("无效的 QQ 单曲 URL") end
     local resource = resourceInfo(resourceUrl)
     local name = trim(resource and resource.name)
@@ -209,7 +198,7 @@ local function fetchLrc(mid)
     return result
 end
 
-function chapterContent(request)
+local function chapterContent(request)
     local mid = songMidFromUrl(request.chapter.url); if not mid then error("无效的 QQ 单曲 URL") end
     local sources = {}; local low = resolveUrl(mid, "128k")
     if low then sources[#sources + 1] = { id = "qq-128k", quality = "low", url = low, headers = HEADERS, format = "file", mimeType = "audio/mpeg" } end
@@ -250,3 +239,24 @@ function chapterContent(request)
         },
     }
 end
+
+return {
+    protocol = "lime-plugin",
+    apiVersion = 1,
+    manifest = {
+        name = "小秋音乐",
+        package = "com.huibq.xiaoqiu.lime",
+        version = "1.0.0",
+        author = "ai",
+        description = "参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源",
+    },
+    requires = { "crypto", "http", "json", "log" },
+    contract = {
+        kind = "resource",
+        content = "audio",
+        search = search,
+        resourceInfo = resourceInfo,
+        chapterList = chapterList,
+        chapterContent = chapterContent,
+    },
+}

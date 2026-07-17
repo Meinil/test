@@ -1,14 +1,3 @@
---[[
-    @name            爱丽丝书屋
-    @package         com.meinil.lime.ai.alicesw
-    @content         novel
-    @author          ai
-    @url             https://xn--vcsx64d.alicesw12.xyz
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua
-    @version         0.0.1
-    @description     国内发布页：https://www.asw2.cc/
-]]
-
 local BASE = "https://xn--vcsx64d.alicesw12.xyz"
 local CONTENT = "novel"
 local TZ_OFFSET = 8 * 60 * 60
@@ -326,18 +315,18 @@ local function fetchUrl(urlTemplate, keyword, page)
     return httpGet(url, BASE .. "/"), url
 end
 
-function search(keyword, page)
+local function search(keyword, page)
     local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
     return parseSearchResources(html, finalUrl)
 end
 
-function resourceInfo(bookUrl)
+local function resourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     return parseDetail(html, fullUrl)
 end
 
-function chapterList(bookUrl)
+local function chapterList(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     if fullUrl:find("/novel/", 1, true) then fullUrl = tocUrlFromBookUrl(fullUrl) end
     local html = httpGet(fullUrl, BASE .. "/")
@@ -356,7 +345,7 @@ function chapterList(bookUrl)
     return chapters
 end
 
-function chapterContent(request)
+local function chapterContent(request)
     local chapterUrl = request.chapter.url
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
@@ -376,7 +365,7 @@ function chapterContent(request)
     return { blocks = blocks }
 end
 
-function explore()
+local function explore()
     local options = {}
     for _, c in ipairs(CATEGORIES) do options[#options + 1] = { field = c.field, label = c.label } end
     return {
@@ -384,7 +373,7 @@ function explore()
     }
 end
 
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     local selected = CATEGORIES[1]
     local wanted = payload and payload.filters and payload.filters.category
     for _, c in ipairs(CATEGORIES) do
@@ -395,9 +384,17 @@ function exploreSearch(keyword, payload)
     return { records = parseRankResources(html, finalUrl) }
 end
 
-function test(content)
+local function test(content)
     local results = search(content or "美母为妻", 1)
     local count = type(results) == "table" and #results or 0
     local message = "爱丽丝书屋 smoke path returned " .. tostring(count) .. " items"
     return { ok = true, message = message }
 end
+
+return {
+    protocol = "lime-plugin", apiVersion = 1,
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.1", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
+    requires = { "crypto", "dom", "http", "log", "time" },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    hooks = { test = test },
+}

@@ -1,14 +1,3 @@
---[[
-    @name            天美小说
-    @package         com.meinil.lime.ai.tianmeixs
-    @content         novel
-    @author          ai
-    @url             https://m.tianmeixs.com
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/tianmeixs.lua
-    @version         0.0.1
-    @description     Converted from Legado source 天美小说.
-]]
-
 local BASE = "https://m.tianmeixs.com"
 local CONTENT = "novel"
 
@@ -236,14 +225,14 @@ local function parseExploreResources(html, baseUrl)
     return out
 end
 
-function search(keyword, page)
+local function search(keyword, page)
     local url = BASE .. "/s.php"
     local body = "type=articlename&s=" .. encodeGbLike(keyword or "")
     local html = httpPost(url, body, BASE .. "/")
     return parseSearchResources(html, url)
 end
 
-function resourceInfo(bookUrl)
+local function resourceInfo(bookUrl)
     local fullUrl = absolutize(bookUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
     local doc = lime.dom.parse(html)
@@ -298,7 +287,7 @@ local function parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue,
     end
 end
 
-function chapterList(bookUrl)
+local function chapterList(bookUrl)
     local firstUrl = absolutize(bookUrl, BASE)
     local info = resourceInfo(firstUrl)
     -- resourceInfo 失败时 throw,会自动冒泡到 backend
@@ -318,7 +307,7 @@ function chapterList(bookUrl)
     return chapters
 end
 
-function chapterContent(request)
+local function chapterContent(request)
     local chapterUrl = request.chapter.url
     local fullUrl = absolutize(chapterUrl, BASE)
     local html = httpGet(fullUrl, BASE .. "/")
@@ -330,7 +319,7 @@ function chapterContent(request)
     return { blocks = blocks }
 end
 
-function explore()
+local function explore()
     local options = {}
     for _, c in ipairs(CATEGORIES) do
         options[#options + 1] = { field = c.field, label = c.label }
@@ -345,7 +334,7 @@ function explore()
     }
 end
 
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     local selected = CATEGORIES[1]
     local wanted = payload and payload.filters and payload.filters.category
     for _, c in ipairs(CATEGORIES) do
@@ -358,9 +347,18 @@ function exploreSearch(keyword, payload)
     return { records = parseExploreResources(html, url) }
 end
 
-function test(content)
+local function test(content)
     local html = httpGet(BASE .. "/sort/1_1/", BASE .. "/")
     local count = #parseExploreResources(html, BASE .. "/sort/1_1/")
     local message = "天美小说 explore smoke path returned " .. tostring(count) .. " items"
     return { ok = true, message = message }
 end
+
+
+return {
+    protocol = "lime-plugin", apiVersion = 1,
+    manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.1", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
+    requires = { "crypto", "dom", "http", "log" },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    hooks = { test = test },
+}

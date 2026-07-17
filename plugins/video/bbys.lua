@@ -1,15 +1,3 @@
---[[
-    @name            布布影视
-    @package         com.meinil.lime.video.bbys
-    @content         video
-    @author          ai
-    @url             https://bbys.app
-    @logo            https://bbys.app/favicon.ico
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/bbys.lua
-    @version         0.0.1
-    @description     FreeOK/MacCMS 视频源，目录严格使用插件设置中选定的线路
-]]
-
 local API_BASE = "https://www.freeokk.pro"
 local API = API_BASE .. "/api.php/provide/vod/"
 local UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -294,19 +282,19 @@ local function detectFormat(url)
     return "file", nil
 end
 
-function search(keyword, page)
+local function search(keyword, page)
     local query = "ac=detail&wd=" .. urlEncode(keyword) .. "&pg=" .. tostring(tonumber(page) or 1)
     return resourcesOf(getJson(apiUrl(query)))
 end
 
-function resourceInfo(url)
+local function resourceInfo(url)
     local vod = firstVod(getJson(url))
     local resource = resourceOf(vod)
     if not resource then error("布布影视详情为空") end
     return resource
 end
 
-function explore()
+local function explore()
     return {
         {
             field = "category",
@@ -318,7 +306,7 @@ function explore()
     }
 end
 
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     payload = payload or {}
     if trim(keyword) ~= "" then
         return { records = search(keyword, payload.current) }
@@ -329,7 +317,7 @@ function exploreSearch(keyword, payload)
     return { records = resourcesOf(getJson(apiUrl("ac=detail&t=" .. category .. "&pg=" .. page))) }
 end
 
-function chapterList(resourceUrl, options)
+local function chapterList(resourceUrl, options)
     local vod = firstVod(getJson(resourceUrl))
     if not vod then error("布布影视目录为空") end
     local route = selectedRoute(resourceUrl, options)
@@ -380,7 +368,7 @@ function chapterList(resourceUrl, options)
     }
 end
 
-function chapterContent(request)
+local function chapterContent(request)
     if not request or not request.chapter then error("chapterContent: missing request.chapter") end
     local url = fixPlayUrl(request.chapter.url)
     if url == "" then error("当前线路播放地址为空，请切换线路后刷新目录") end
@@ -406,7 +394,7 @@ function chapterContent(request)
     }
 end
 
-function settings()
+local function settings()
     return {
         {
             label = "播放线路",
@@ -430,9 +418,9 @@ function settings()
     }
 end
 
-function settingsAction(data)
-    if not data or data.action ~= "saveRoute" then
-        error("settingsAction: unknown action '" .. tostring(data and data.action) .. "'")
+local function settingsAction(action, data)
+    if action ~= "saveRoute" then
+        error("settingsAction: unknown action '" .. tostring(action) .. "'")
     end
     local route = trim(data.route)
     for _, option in ipairs(routeOptions()) do
@@ -443,7 +431,7 @@ function settingsAction(data)
     error("不支持的播放线路")
 end
 
-function test(content)
+local function test(content)
     if content == "loose-json" then
         local value, parseError = parseJsonLoose('{"list":[{"vod_name":"第一行\n第二行"}]}')
         if not value then error("宽松 JSON 测试失败: " .. tostring(parseError)) end
@@ -471,3 +459,32 @@ function test(content)
     if ok then return result end
     error(tostring(result))
 end
+
+
+return {
+    protocol = "lime-plugin",
+    apiVersion = 1,
+    manifest = {
+        name = "布布影视",
+        package = "com.meinil.lime.video.bbys",
+        version = "0.0.1",
+        author = "ai",
+        description = "FreeOK/MacCMS 视频源，目录严格使用插件设置中选定的线路",
+        homepage = "https://bbys.app",
+        logo = "https://bbys.app/favicon.ico",
+    },
+    requires = { "browser", "crypto", "http", "json", "storage" },
+    contract = {
+        kind = "resource",
+        content = "video",
+        search = search,
+        resourceInfo = resourceInfo,
+        chapterList = chapterList,
+        chapterContent = chapterContent,
+        explore = { filters = explore, search = exploreSearch },
+    },
+    hooks = {
+        settings = { list = settings, action = settingsAction },
+        test = test,
+    },
+}

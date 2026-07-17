@@ -1,15 +1,3 @@
---[[
-    @name            得奇小说网
-    @package         com.meinil.lime.ai.deqixs
-    @content         novel
-    @author          Ai
-    @logo            https://www.deqixs.cc/favicon.ico
-    @url             https://www.deqixs.cc
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua
-    @version         0.0.1
-    @description     得奇小说网
-]]
-
 -- =====================================================================
 -- 配置
 -- =====================================================================
@@ -256,7 +244,7 @@ end
 -- =====================================================================
 -- 搜索 search(keyword, page)
 -- =====================================================================
-function search(keyword, page)
+local function search(keyword, page)
     lime.log.info("searching: " .. tostring(keyword))
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -341,7 +329,7 @@ end
 -- =====================================================================
 -- 资源详情 resourceInfo(bookUrl)
 -- =====================================================================
-function resourceInfo(bookUrl)
+local function resourceInfo(bookUrl)
     lime.log.info("bookInfo: " .. tostring(bookUrl))
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -435,7 +423,7 @@ end
 -- =====================================================================
 -- 章节列表 chapterList(bookUrl)
 -- =====================================================================
-function chapterList(bookUrl)
+local function chapterList(bookUrl)
     lime.log.info("chapterList: " .. tostring(bookUrl))
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -494,7 +482,7 @@ end
 --   { id = "image-1", type = "image", source = { id = "image-source-1", url = "https://...", headers = { ... } } }
 -- 错误处理返回非 0 code,后端把 message 写入失败链路。
 -- =====================================================================
-function chapterContent(request)
+local function chapterContent(request)
     local chapterUrl = request.chapter.url
     local chapterBase = originOf(chapterUrl)
 
@@ -624,7 +612,7 @@ end
 -- 返回 ExploreFilterVO[]:每个 filter 由前端按 type 渲染对应控件
 -- (single → shadcn Select / multiple → Checkbox / cascade → 树)
 -- =====================================================================
-function explore()
+local function explore()
     -- 直接复用 CATEGORIES 列表展开成 options
     local options = {}
     for _, c in ipairs(CATEGORIES) do
@@ -647,7 +635,7 @@ end
 -- 返回 { records = ResourceDetailVO[], total? }
 -- content 字段可选;前端 fallback 链:book.content ?? plugin.content ?? 'novel'
 -- =====================================================================
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     local sortId = "0"
     if payload and payload.filters and payload.filters.category then
         sortId = tostring(payload.filters.category)
@@ -720,7 +708,7 @@ end
 -- 冒烟测试 test(content)
 -- 简单 connectivity check:取探索页第一页,验证站点可达
 -- =====================================================================
-function test(content)
+local function test(content)
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
         ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
@@ -742,8 +730,11 @@ function test(content)
     return { ok = true, message = message }
 end
 
--- 顶层入口函数已直接定义在 globals(每个 raw 函数即顶层入口)。
--- 成功:返回裸数据(array/object/string)
--- 失败:throw error 字符串
--- backend runner::invoke 接 mlua::Error → PluginRuntimeError → ApiResponse::error(1101, msg)
--- decode_lua_response 把裸数据视为 success data(原契约)
+
+return {
+    protocol = "lime-plugin", apiVersion = 1,
+    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.1", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
+    requires = { "crypto", "dom", "http", "json", "log", "time" },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    hooks = { test = test },
+}

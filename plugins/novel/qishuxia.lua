@@ -1,15 +1,3 @@
---[[
-    @name            奇书网
-    @package         com.meinil.lime.ai.qishuxia
-    @content         novel
-    @author          Ai
-    @url             https://www.qishuxia.com
-    @logo            https://www.qishuxia.com/favicon.ico
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua
-    @version         0.0.1
-    @description     奇书网 - 好看的小说大全免费在线阅读和 txt 下载
-]]
-
 -- =====================================================================
 -- 配置
 -- =====================================================================
@@ -381,7 +369,7 @@ end
 -- 搜索 search(keyword, page)
 -- =====================================================================
 
-function search(keyword, page)
+local function search(keyword, page)
     lime.log.info("search: keyword=" .. tostring(keyword))
     if not keyword or keyword == "" then return {} end
 
@@ -443,7 +431,7 @@ end
 -- 资源详情 resourceInfo(bookUrl)
 -- =====================================================================
 
-function resourceInfo(bookUrl)
+local function resourceInfo(bookUrl)
     lime.log.info("resourceInfo: " .. tostring(bookUrl))
     warmSite()
     local headers = {
@@ -487,7 +475,7 @@ end
 -- 章节列表 chapterList(bookUrl)
 -- =====================================================================
 
-function chapterList(bookUrl)
+local function chapterList(bookUrl)
     lime.log.info("chapterList: " .. tostring(bookUrl))
     warmSite()
     local headers = {
@@ -546,7 +534,7 @@ end
 -- 错误处理:error("<消息>") 抛出,backend 映成 1101(见 Plugin.md §2.6)
 -- =====================================================================
 
-function chapterContent(request)
+local function chapterContent(request)
     local chapterUrl = request.chapter.url
     lime.log.info("chapterContent: " .. tostring(chapterUrl))
     warmSite()
@@ -609,7 +597,7 @@ end
 -- 返回 ExploreFilterVO[]:每个 filter 由前端按 type 渲染对应控件
 -- =====================================================================
 
-function explore()
+local function explore()
     local options = {}
     for _, c in ipairs(CATEGORIES) do
         options[#options + 1] = { field = c.field, label = c.label }
@@ -631,7 +619,7 @@ end
 -- 站点发现页是分类目录页(/<catId>[/N.html]),关键字不可用,直接忽略
 -- =====================================================================
 
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     warmSite()
 
     local sortId
@@ -678,7 +666,7 @@ end
 -- 取探索页首页验证可达性
 -- =====================================================================
 
-function test(content)
+local function test(content)
     lime.log.info("test: smoke check")
     warmSite()
     local headers = {
@@ -703,8 +691,11 @@ function test(content)
     return { ok = true, message = message }
 end
 
--- =====================================================================
--- 顶层入口:直接返回裸数据(成功)/ throw error(失败)
--- backend runner::invoke 接 mlua::Error → PluginRuntimeError → 1101
--- decode_lua_response 把裸数据视为 success data
--- =====================================================================
+
+return {
+    protocol = "lime-plugin", apiVersion = 1,
+    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.1", author = "Ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
+    requires = { "crypto", "dom", "http", "log", "time" },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    hooks = { test = test },
+}

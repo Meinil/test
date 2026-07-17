@@ -1,15 +1,3 @@
---[[
-    @name            japaneseasmr
-    @package         com.example.japaneseasmr.lime
-    @content         audio
-    @author          ai
-    @url             https://japaneseasmr.com
-    @logo            https://japaneseasmr.com/favicon.ico
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua
-    @version         0.0.1
-    @description     japaneseasmr
-]]
-
 local BASE = "https://japaneseasmr.com"
 local UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
 local DEFAULT_HEADERS = {
@@ -242,7 +230,7 @@ end
 -- ============================================================
 -- search (站内搜索,跨插件批量)
 -- ============================================================
-function search(keyword, page)
+local function search(keyword, page)
     page = page or 1
     local html, err = httpGet("/?s=" .. urlEncode(keyword) .. "&paged=" .. page)
     if not html then return {} end
@@ -349,7 +337,7 @@ local function buildExplorePath(keyword, filters, page)
     return appendQuery(path, SORT_QUERY[filters.sort or "recent"] or SORT_QUERY.recent)
 end
 
-function explore()
+local function explore()
     local html, err, status = httpGet("/tags/")
     if requiresBrowserAuth(html, status) then
         lime.browser.open({
@@ -387,7 +375,7 @@ function explore()
     return filters
 end
 
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     payload = payload or {}
     local page = math.max(1, math.floor(tonumber(payload.current) or 1))
     local filters = payload.filters or {}
@@ -414,7 +402,7 @@ end
 -- ============================================================
 -- resourceInfo(单个 post 详情)
 -- ============================================================
-function resourceInfo(url)
+local function resourceInfo(url)
     if not url or url == "" then error("无效的 URL") end
     local data, err = fetchProductData(url)
     if not data then error("fetch post failed: " .. tostring(err)) end
@@ -439,7 +427,7 @@ end
 -- chapterList — 协议核心改造点
 -- 1 个 product(1 个 HLS m3u8 + N 段 track list)拆为 N 个章节共享同一 chapterUrl
 -- ============================================================
-function chapterList(resourceUrl)
+local function chapterList(resourceUrl)
     if not resourceUrl or resourceUrl == "" then error("无效的 URL") end
     local data, err = fetchProductData(resourceUrl)
     if not data then error("chapterList: fetch failed: " .. tostring(err)) end
@@ -462,7 +450,7 @@ end
 -- ============================================================
 -- chapterContent — audio block 加 clip 表达"同 URL 多段"
 -- ============================================================
-function chapterContent(request)
+local function chapterContent(request)
     if not request or not request.resource or not request.chapter then
         error("chapterContent: missing request fields")
     end
@@ -517,7 +505,7 @@ end
 -- ============================================================
 -- test(冒烟;失败/成功都返 TestResultVO)
 -- ============================================================
-function test(content)
+local function test(content)
     local html, err = httpGet("/tags/")
     if not html then
         return { ok = false, message = "无法连接 " .. BASE .. ": " .. tostring(err or "network") }
@@ -591,3 +579,30 @@ function test(content)
     end
     return { ok = true, message = "OK · groups=" .. #groups .. " · tags=" .. count .. " · productTags=" .. #productTags }
 end
+
+return {
+    protocol = "lime-plugin",
+    apiVersion = 1,
+    manifest = {
+        name = "japaneseasmr",
+        package = "com.example.japaneseasmr.lime",
+        version = "0.0.1",
+        author = "ai",
+        description = "japaneseasmr",
+        homepage = "https://japaneseasmr.com",
+        logo = "https://japaneseasmr.com/favicon.ico",
+    },
+    requires = { "browser", "dom", "http", "log", "time" },
+    contract = {
+        kind = "resource",
+        content = "audio",
+        search = search,
+        resourceInfo = resourceInfo,
+        chapterList = chapterList,
+        chapterContent = chapterContent,
+        explore = { filters = explore, search = exploreSearch },
+    },
+    hooks = {
+        test = test,
+    },
+}

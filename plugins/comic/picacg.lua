@@ -1,15 +1,3 @@
---[[
-    @name            Picacg
-    @package         com.meinil.lime.ai.picacg
-    @content         comic
-    @author          ai
-    @url             https://www.bikamanhua.com.cn
-    @logo            https://www.bikamanhua.com.cn/logo.png
-    @sourceUrl       https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua
-    @version         0.0.1
-    @description     Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。
-]]
-
 local DEFAULT_BASE_URL = "https://picaapi.picacomic.com"
 local API_KEY = "C69BAF41DA5ABD1FFEDC6D2FEA56B"
 local SIGN_KEY = "~d}$Q7$eIni=V)9\\RK/P.RM4;9[7|@/CA}b~OW!3?EV`:<>M7pddUBL5n|0/*Cn"
@@ -376,7 +364,7 @@ local function punchInAccount(form)
 end
 
 --- 搜索漫画。
-function search(keyword, page)
+local function search(keyword, page)
     local current = tonumber(page) or 1
     local path = "comics/advanced-search?page=" .. current
     local data, err = requestJson("POST", path, {
@@ -388,7 +376,7 @@ function search(keyword, page)
 end
 
 --- 发现页筛选声明。
-function explore()
+local function explore()
     local categoryOptions = {}
     for _, category in ipairs(CATEGORIES) do
         categoryOptions[#categoryOptions + 1] = { field = category, label = category }
@@ -401,7 +389,7 @@ function explore()
 end
 
 --- 发现页搜索。
-function exploreSearch(keyword, payload)
+local function exploreSearch(keyword, payload)
     if not lime.storage.get("token") then
         error("请先登录")
     end
@@ -454,7 +442,7 @@ function exploreSearch(keyword, payload)
 end
 
 --- 拉取漫画详情。
-function resourceInfo(url)
+local function resourceInfo(url)
     local id = tostring(url or "")
     if id == "" then error("漫画 ID 为空") end
     if not lime.storage.get("token") then
@@ -471,7 +459,7 @@ function resourceInfo(url)
 end
 
 --- 拉取章节列表。
-function chapterList(url)
+local function chapterList(url)
     local id = tostring(url or "")
     if id == "" then error("漫画 ID 为空") end
     if not lime.storage.get("token") then
@@ -506,7 +494,7 @@ function chapterList(url)
 end
 
 --- 拉取章节图片。
-function chapterContent(request)
+local function chapterContent(request)
     local chapterUrl = request.chapter.url
     local comicId, epId = tostring(chapterUrl or ""):match("^([^#]+)#(.+)$")
     if not comicId or not epId then error("章节 URL 无效") end
@@ -544,7 +532,7 @@ function chapterContent(request)
 end
 
 --- 冒烟测试。
-function test(content)
+local function test(content)
     if not lime.storage.get("token") then
         error("未登录: 请在插件更多功能中先登录 Picacg")
     end
@@ -559,7 +547,7 @@ function test(content)
 end
 
 --- 设置菜单。
-function settings()
+local function settings()
     local hasToken = lime.storage.get("token") ~= nil
     return {
         {
@@ -673,8 +661,7 @@ function settings()
 end
 
 --- settings 统一 action dispatcher。
-function settingsAction(data)
-    local action = data and data.action
+local function settingsAction(action, data)
     if action == "loginBtn" then
         if not data.username or data.username == "" then
             error("邮箱必填")
@@ -720,8 +707,30 @@ function settingsAction(data)
     error("settingsAction: unknown action '" .. tostring(action) .. "'")
 end
 
--- =====================================================================
--- 顶层入口:直接返回裸数据(成功)/ throw error(失败)
--- requestJson/requestEnvelope 内部仍用 envelope 结构(用于 sign-in 等需要 envelope 全字段的场景),
--- 顶层 raw 函数已转换为 error() 抛出响应体里的 message。
--- =====================================================================
+return {
+    protocol = "lime-plugin",
+    apiVersion = 1,
+    manifest = {
+        name = "Picacg",
+        package = "com.meinil.lime.ai.picacg",
+        version = "0.0.1",
+        author = "ai",
+        description = "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。",
+        homepage = "https://www.bikamanhua.com.cn",
+        logo = "https://www.bikamanhua.com.cn/logo.png",
+    },
+    requires = { "crypto", "http", "json", "log", "storage", "time" },
+    contract = {
+        kind = "resource",
+        content = "comic",
+        search = search,
+        resourceInfo = resourceInfo,
+        chapterList = chapterList,
+        chapterContent = chapterContent,
+        explore = { filters = explore, search = exploreSearch },
+    },
+    hooks = {
+        settings = { list = settings, action = settingsAction },
+        test = test,
+    },
+}

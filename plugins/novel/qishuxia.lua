@@ -514,6 +514,7 @@ local function chapterList(bookUrl)
         if not seen[chUrl] then
             seen[chUrl] = true
             chapters[#chapters + 1] = {
+                id    = chUrl,
                 name  = trim(name),
                 url   = chUrl,
                 index = #chapters + 1,
@@ -525,7 +526,7 @@ local function chapterList(bookUrl)
         error("未找到章节列表")
     end
     lime.log.info("chapterList: count=" .. #chapters)
-    return chapters
+    return { chapters = chapters }
 end
 
 -- =====================================================================

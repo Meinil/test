@@ -207,7 +207,6 @@ local function resourceFromRankItem(item, baseUrl)
         wordCount = parseCount(selectText(doc, "li.five")),
         chapterCount = 0,
         latestUpdateTime = latestTime,
-        content = CONTENT,
     }
 end
 
@@ -249,7 +248,6 @@ local function parseSearchResources(html, baseUrl)
                 wordCount = parseCount(selectText(sub, "p.mb-1.text-muted")),
                 chapterCount = 0,
                 latestUpdateTime = latestTime,
-                content = CONTENT,
             }
         end
     end
@@ -303,7 +301,6 @@ local function parseDetail(html, url)
         wordCount = wordCount,
         chapterCount = chapterCount,
         latestUpdateTime = latestUpdateTime,
-        content = CONTENT,
     }
 end
 
@@ -339,10 +336,10 @@ local function chapterList(bookUrl)
         local name = text(link)
         if name ~= "" and url ~= "" and not seen[url] then
             seen[url] = true
-            chapters[#chapters + 1] = { name = name, url = url, index = #chapters + 1 }
+            chapters[#chapters + 1] = { id = url, name = name, url = url, index = #chapters + 1 }
         end
     end
-    return chapters
+    return { chapters = chapters }
 end
 
 local function chapterContent(request)

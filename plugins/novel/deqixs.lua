@@ -456,6 +456,7 @@ local function chapterList(bookUrl)
         if CHAPTER_BLACKLIST[nameTrim] then goto continue end
         seen[url] = true
         chapters[#chapters + 1] = {
+            id    = tostring(extractChapterId(url)),
             name  = nameTrim,
             url   = url,
             index = extractChapterId(url),
@@ -471,7 +472,7 @@ local function chapterList(bookUrl)
         c.index = i
     end
 
-    return chapters
+    return { chapters = chapters }
 end
 
 -- =====================================================================

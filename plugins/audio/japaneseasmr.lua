@@ -155,7 +155,6 @@ local function resourceOf(post, cv, baseHref)
         url = url,
         cover = coverSource(cover),
         latestUpdateTime = ts and parseIsoTime(ts) or nil,
-        content = "audio",
         chapterCount = 1,  -- resourceInfo 时补全
         tags = { "japanese", "asmr" },
         wordCount = 0,
@@ -419,7 +418,6 @@ local function resourceInfo(url)
         chapterCount = #data.starts,
         tags = data.tags,
         wordCount = 0,
-        content = "audio",
     }
 end
 
@@ -439,12 +437,13 @@ local function chapterList(resourceUrl)
     local chapters = {}
     for i, startSec in ipairs(starts) do
         chapters[#chapters + 1] = {
+            id = tostring(startSec),
             name = data.titles[i] or ("トラック " .. i),
             url = resourceUrl,                 -- 共享 chapterUrl
             index = i - 1,                      -- 0-based,与 request.chapter.index 约定一致
         }
     end
-    return chapters
+    return { chapters = chapters }
 end
 
 -- ============================================================

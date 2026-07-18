@@ -201,7 +201,6 @@ local function resourceOf(vod)
         wordCount = 0,
         chapterCount = tonumber(vod.vod_total or vod.vod_serial) or 0,
         latestUpdateTime = 0,
-        content = "video",
     }
 end
 
@@ -214,15 +213,9 @@ local function resourcesOf(payload)
     return resources
 end
 
-local function resourceRouteKey(resourceUrl)
-    return "playback:route:resource:" .. tostring(resourceUrl or "")
-end
-
 local function selectedRoute(resourceUrl, options)
-    local requested = trim(options and options.variantId)
+    local requested = trim(options and options.routeId)
     if requested ~= "" then return requested end
-    local resourceRoute = trim(lime.storage.get(resourceRouteKey(resourceUrl)))
-    if resourceRoute ~= "" then return resourceRoute end
     local value = trim(lime.storage.get("playback:route"))
     return value ~= "" and value or DEFAULT_ROUTE
 end
@@ -335,10 +328,6 @@ local function chapterList(resourceUrl, options)
             availableRoutesMessage(froms) .. "。请在插件设置中切换线路后刷新目录")
     end
 
-    if trim(options and options.variantId) ~= "" then
-        lime.storage.set(resourceRouteKey(resourceUrl), route)
-    end
-
     local chapters = {}
     for episode in selected:gmatch("[^#]+") do
         local separator = episode:find("$", 1, true)
@@ -347,6 +336,7 @@ local function chapterList(resourceUrl, options)
             local url = fixPlayUrl(episode:sub(separator + 1))
             if url ~= "" then
                 chapters[#chapters + 1] = {
+                    id = route .. ":" .. url,
                     name = name ~= "" and name or ("第" .. tostring(#chapters + 1) .. "集"),
                     url = url,
                     index = #chapters,
@@ -357,13 +347,13 @@ local function chapterList(resourceUrl, options)
     if #chapters == 0 then
         error("当前线路没有可用剧集，请在插件设置中切换线路后刷新目录")
     end
-    local variants = {}
+    local routes = {}
     for _, value in ipairs(froms) do
-        variants[#variants + 1] = { id = value, label = routeLabel(value) }
+        routes[#routes + 1] = { id = value, label = routeLabel(value) }
     end
     return {
-        variants = variants,
-        selectedVariantId = route,
+        routes = routes,
+        selectedRouteId = route,
         chapters = chapters,
     }
 end
@@ -379,14 +369,16 @@ local function chapterContent(request)
                 id = "video-main",
                 type = "video",
                 title = request.chapter.name,
-                source = {
-                    id = "selected-route",
-                    format = format,
-                    mimeType = mimeType,
-                    url = url,
-                    headers = {
-                        ["User-Agent"] = UA,
-                        ["Referer"] = API_BASE .. "/",
+                sources = {
+                    {
+                        id = "selected-route",
+                        format = format,
+                        mimeType = mimeType,
+                        url = url,
+                        headers = {
+                            ["User-Agent"] = UA,
+                            ["Referer"] = API_BASE .. "/",
+                        },
                     },
                 },
             },
@@ -452,8 +444,8 @@ local function test(content)
         local info = resourceInfo(records[1].url)
         local catalog = chapterList(info.url)
         local chapters = catalog.chapters
-        local contentResult = chapterContent({ resource = { url = info.url, content = "video" }, chapter = chapters[1] })
-        if not contentResult.blocks[1].source.url then error("视频源为空") end
+        local contentResult = chapterContent({ resource = { url = info.url }, chapter = chapters[1] })
+        if not contentResult.blocks[1].sources[1].url then error("视频源为空") end
         return { ok = true, message = "布布影视可用，共 " .. tostring(#chapters) .. " 集" }
     end)
     if ok then return result end

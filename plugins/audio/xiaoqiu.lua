@@ -45,7 +45,7 @@ local function resourceOf(song)
         intro = trim(song.subtitle), latestChapter = trim(song.title or song.songname),
         latestChapterUrl = "https://y.qq.com/n/ryqq/songDetail/" .. mid,
         kind = "音乐", tags = { "QQ音乐" }, wordCount = 0, chapterCount = 1,
-        latestUpdateTime = 0, content = "audio",
+        latestUpdateTime = 0,
     }
 end
 
@@ -68,7 +68,7 @@ local function chapterList(resourceUrl)
     local resource = resourceInfo(resourceUrl)
     local name = trim(resource and resource.name)
     if name == "" then error("未取得单曲名称") end
-    return { { name = name, url = resourceUrl, index = 0 } }
+    return { chapters = { { id = songMidFromUrl(resourceUrl), name = name, url = resourceUrl, index = 0 } } }
 end
 
 local function resolveUrl(mid, quality)

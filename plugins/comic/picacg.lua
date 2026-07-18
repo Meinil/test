@@ -233,7 +233,6 @@ local function comicToResource(comic)
         chapterCount = tonumber(comic.epsCount or 0) or 0,
         wordCount = tonumber(comic.pagesCount or 0) or 0,
         tags = tags,
-        content = "comic",
         meta = {
             {
                 label = "汉化组",
@@ -484,13 +483,15 @@ local function chapterList(url)
 
     local chapters = {}
     for index, ep in ipairs(all) do
+        local sourceId = tostring(ep._id or ep.id or ep.order or index)
         chapters[#chapters + 1] = {
+            id = sourceId,
             name = trim(ep.title) ~= "" and trim(ep.title) or ("第 " .. index .. " 章"),
-            url = id .. "#" .. tostring(index),
+            url = id .. "#" .. sourceId,
             index = index - 1,
         }
     end
-    return chapters
+    return { chapters = chapters }
 end
 
 --- 拉取章节图片。

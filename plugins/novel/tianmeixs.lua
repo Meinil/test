@@ -179,7 +179,6 @@ local function parseSearchResources(html, baseUrl)
                 wordCount = 0,
                 chapterCount = 0,
                 latestUpdateTime = nil,
-                content = CONTENT,
             }
         end
     end
@@ -218,7 +217,6 @@ local function parseExploreResources(html, baseUrl)
                 wordCount = 0,
                 chapterCount = 0,
                 latestUpdateTime = nil,
-                content = CONTENT,
             }
         end
     end
@@ -263,7 +261,6 @@ local function resourceInfo(bookUrl)
         wordCount = nil,
         chapterCount = 0,
         latestUpdateTime = nil,
-        content = CONTENT,
     }
 end
 
@@ -274,7 +271,7 @@ local function parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue,
         local url = absolutize(attr(a, "href"), pageUrl)
         if name ~= "" and url ~= "" and not seenChapter[url] then
             seenChapter[url] = true
-            chapters[#chapters + 1] = { name = name, url = url, index = #chapters + 1 }
+            chapters[#chapters + 1] = { id = url, name = name, url = url, index = #chapters + 1 }
         end
     end
     for _, a in ipairs(lime.dom.selectAll(doc, ".showpage ul li a") or {}) do
@@ -304,7 +301,7 @@ local function chapterList(bookUrl)
         local html = httpGet(pageUrl, firstUrl)
         parseChapterPage(html, pageUrl, chapters, seenChapter, pageQueue, seenPage)
     end
-    return chapters
+    return { chapters = chapters }
 end
 
 local function chapterContent(request)

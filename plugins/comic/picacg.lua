@@ -81,13 +81,13 @@ local function buildHeaders(method, path, token, form)
     return {
         ["api-key"] = API_KEY,
         ["accept"] = "application/vnd.picacomic.com.v1+json",
-        ["app-channel"] = (form and form.appChannel) or storageOrDefault("appChannel", "3"),
+        ["app-channel"] = lime.storage.get("request:appChannel") or "3",
         ["authorization"] = token or "",
         ["time"] = t,
         ["nonce"] = n,
         ["app-version"] = "2.2.1.3.3.4",
         ["app-uuid"] = "defaultUuid",
-        ["image-quality"] = (form and form.imageQuality) or storageOrDefault("imageQuality", "original"),
+        ["image-quality"] = lime.storage.get("request:imageQuality") or "original",
         ["app-platform"] = "android",
         ["app-build-version"] = "45",
         ["Content-Type"] = "application/json; charset=UTF-8",
@@ -148,7 +148,10 @@ local function httpBodyMessage(body)
     if not body or body == "" then return nil end
     local json = decodeJson(body)
     if type(json) ~= "table" then return nil end
-    return json.message or ((json.data or {}).message)
+    local message = json.message or ((json.data or {}).message)
+    message = trim(message)
+    if message == "" then return nil end
+    return message
 end
 
 --- 执行 Picacg 请求并返回完整 envelope `{code, message, data}`。
@@ -457,6 +460,24 @@ local function resourceInfo(url)
     return item
 end
 
+--- 将 Picacg 章节对象映射为稳定 id 与数字 order 路由分离的章节描述符。
+local function buildChapterDescriptors(comicId, eps)
+    table.sort(eps, function(a, b)
+        return (tonumber(a.order) or 0) < (tonumber(b.order) or 0)
+    end)
+    local chapters = {}
+    for index, ep in ipairs(eps) do
+        local sourceId = tostring(ep._id or ep.id or ep.order or index)
+        chapters[#chapters + 1] = {
+            id = sourceId,
+            name = trim(ep.title) ~= "" and trim(ep.title) or ("第 " .. index .. " 章"),
+            url = comicId .. "#" .. tostring(index),
+            index = index - 1,
+        }
+    end
+    return chapters
+end
+
 --- 拉取章节列表。
 local function chapterList(url)
     local id = tostring(url or "")
@@ -477,20 +498,8 @@ local function chapterList(url)
         if not eps.pages or page >= tonumber(eps.pages) then break end
         page = page + 1
     end
-    table.sort(all, function(a, b)
-        return (tonumber(a.order) or 0) < (tonumber(b.order) or 0)
-    end)
 
-    local chapters = {}
-    for index, ep in ipairs(all) do
-        local sourceId = tostring(ep._id or ep.id or ep.order or index)
-        chapters[#chapters + 1] = {
-            id = sourceId,
-            name = trim(ep.title) ~= "" and trim(ep.title) or ("第 " .. index .. " 章"),
-            url = id .. "#" .. sourceId,
-            index = index - 1,
-        }
-    end
+    local chapters = buildChapterDescriptors(id, all)
     return { chapters = chapters }
 end
 
@@ -532,8 +541,54 @@ local function chapterContent(request)
     return { blocks = blocks }
 end
 
+local settings
+
 --- 冒烟测试。
 local function test(content)
+    -- 纯本地验证登录字段与请求设置 dialog 已解耦。
+    if content == "request-settings-schema" then
+        local login, request
+        for _, setting in ipairs(settings()) do
+            if setting.key == "login" then login = setting end
+            if setting.key == "request" then request = setting end
+        end
+        if not login or not request then error("Picacg 请求设置 dialog 缺失") end
+        local loginNames = {}
+        for _, field in ipairs(login.fields) do loginNames[field.field] = true end
+        if loginNames.imageQuality or loginNames.appChannel then
+            error("Picacg 登录 dialog 仍包含请求参数")
+        end
+        if request.key ~= "request" or request.fields[1].field ~= "imageQuality"
+            or request.fields[2].field ~= "appChannel"
+            or request.actions[1].action ~= "saveRequestSettings" then
+            error("Picacg 请求设置 dialog 结构测试失败")
+        end
+        return { ok = true, message = "Picacg 请求设置结构通过" }
+    end
+    -- 纯本地回归测试不依赖登录或网络，供仓库验证章节路由映射。
+    if content == "chapter-routing" then
+        local chapters = buildChapterDescriptors("comic-id", {
+            { _id = "chapter-b", title = "第二章", order = 20 },
+            { _id = "chapter-a", title = "第一章", order = 10 },
+        })
+        if chapters[1].id ~= "chapter-a" or chapters[1].url ~= "comic-id#1" or chapters[1].index ~= 0 then
+            error("Picacg 章节路由映射测试失败")
+        end
+        if chapters[2].id ~= "chapter-b" or chapters[2].url ~= "comic-id#2" or chapters[2].index ~= 1 then
+            error("Picacg 章节路由顺序测试失败")
+        end
+        return { ok = true, message = "Picacg 章节路由映射通过" }
+    end
+    -- 验证空白消息不会遮蔽 HTTP 状态回退，同时保留有效服务端消息。
+    if content == "http-error-message" then
+        if httpBodyMessage('{"message":"   "}') ~= nil then
+            error("Picacg 空白错误消息测试失败")
+        end
+        if httpBodyMessage('{"data":{"message":"denied"}}') ~= "denied" then
+            error("Picacg 有效错误消息测试失败")
+        end
+        return { ok = true, message = "Picacg HTTP 错误消息规范化通过" }
+    end
     if not lime.storage.get("token") then
         error("未登录: 请在插件更多功能中先登录 Picacg")
     end
@@ -548,7 +603,7 @@ local function test(content)
 end
 
 --- 设置菜单。
-local function settings()
+settings = function()
     local hasToken = lime.storage.get("token") ~= nil
     return {
         {
@@ -560,11 +615,22 @@ local function settings()
             fields = {
                 { field = "username", label = "邮箱", required = true, type = "input", inputType = "text" },
                 { field = "password", label = "密码", required = true, type = "input", inputType = "password" },
-                { field = "baseUrl", label = "API 地址", required = false, type = "input", inputType = "text", default = "https://picaapi.picacomic.com" },
+                { field = "baseUrl", label = "API 地址", required = false, type = "input", inputType = "text", default = DEFAULT_BASE_URL },
+            },
+            actions = {
+                { field = "loginBtn", label = "登录", action = "loginBtn" },
+            },
+        },
+        {
+            label = "请求设置",
+            key = "request",
+            type = "dialog",
+            icon = "Settings2",
+            fields = {
                 {
                     field = "imageQuality",
                     label = "图片质量",
-                    required = false,
+                    required = true,
                     type = "select",
                     options = {
                         { value = "original", label = "original" },
@@ -576,7 +642,7 @@ local function settings()
                 {
                     field = "appChannel",
                     label = "App Channel",
-                    required = false,
+                    required = true,
                     type = "select",
                     options = {
                         { value = "1", label = "1" },
@@ -587,7 +653,7 @@ local function settings()
                 },
             },
             actions = {
-                { field = "loginBtn", label = "登录", action = "loginBtn" },
+                { field = "saveRequestSettings", label = "保存", action = "saveRequestSettings" },
             },
         },
         {
@@ -673,15 +739,11 @@ local function settingsAction(action, data)
         if not data.baseUrl or data.baseUrl == "" then
             data.baseUrl = DEFAULT_BASE_URL
         end
-        if not data.imageQuality or data.imageQuality == "" then
-            data.imageQuality = "original"
-        end
-        if not data.appChannel or data.appChannel == "" then
-            data.appChannel = "3"
-        end
         local _, err = login(data.username, data.password, data)
         if err then error(err) end
         return { ok = true, message = "Picacg 登录成功" }
+    elseif action == "saveRequestSettings" then
+        return { ok = true, message = "请求设置已保存" }
     elseif action == "registerBtn" then
         local _, err = registerAccount(data, data)
         if err then error(err) end

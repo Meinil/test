@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "theme",
+  "entries": [
+    {
+      "name": "Black and pink",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/themes/Black%20and%20pink.css",
+      "hash": "35e4f38729e17c7ee7e2b4547fa9e475c3573b73267dff11c320766d23ec6212"
+    },
+    {
+      "name": "Deep Purple",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/themes/Deep%20Purple.css",
+      "hash": "cc7670d677ee7d785f4379d5272257a5c33e023ee78166fc1efbb72f10d23539"
+    }
+  ]
+}

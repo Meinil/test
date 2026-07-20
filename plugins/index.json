@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "kind": "plugin",
+  "entries": [
+    {
+      "name": "小秋音乐",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/xiaoqiu.lua",
+      "hash": "e0d07296ed8876b055afd9347b6b089519b5595b78577f8d317550611d3ccda3"
+    },
+    {
+      "name": "japaneseasmr",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
+      "hash": "58725b2b8f719bf737043297d27e12e97746bd68d68622dd7ffae775723089a2"
+    },
+    {
+      "name": "Picacg",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua",
+      "hash": "fd343637940cfd7ff4986c50fb79872ce2003a8c7959e2fd6caa81acb0a530a2"
+    },
+    {
+      "name": "爱丽丝书屋",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
+      "hash": "bcf60a5151fef8c28f8a23ccf3290b5f274dd492d6ddc626b157e83362bd661a"
+    },
+    {
+      "name": "得奇小说网",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
+      "hash": "b3455412580b54e5d0048cd8d9a73c061f2f14713f669bfcc2bf737869fb792d"
+    },
+    {
+      "name": "奇书网",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua",
+      "hash": "fc66ece9418324bec40e9ec2fd1ae48e7b85784937555a5ccdd2df035e06104a"
+    },
+    {
+      "name": "天美小说",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/tianmeixs.lua",
+      "hash": "09a9be395a1ec4c4c90ef5ef7e518aec70367253484a85e110be2f3218f3f817"
+    },
+    {
+      "name": "布布影视",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/bbys.lua",
+      "hash": "74e5e152242a59d360e58921c2882451275fc7ae11ef14e67442ffdfcb665fd5"
+    },
+    {
+      "name": "Jable TV",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/jable.lua",
+      "hash": "c6cdfb60ae676b0dd1f766dd0e46398062589c795b542d947b2269ef4630edb8"
+    }
+  ]
+}

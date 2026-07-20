@@ -55,6 +55,31 @@ local function cleanText(value)
     return trim(htmlDecode(text))
 end
 
+local function splitTags(value)
+    local tags = {}
+    local normalized = tostring(value or ""):gsub("，", ",")
+    for item in normalized:gmatch("[^,]+") do
+        local tag = cleanText(item)
+        if tag ~= "" then tags[#tags + 1] = tag end
+    end
+    return tags
+end
+
+local function parseVodTime(value)
+    local raw = trim(value)
+    if raw == "" then return nil end
+    local numeric = tonumber(raw)
+    if numeric then
+        if numeric > 20000000000 then numeric = numeric / 1000 end
+        return math.floor(numeric)
+    end
+    for _, format in ipairs({ "YYYY-MM-dd HH:mm:ss", "YYYY-MM-dd HH:mm", "YYYY-MM-dd" }) do
+        local timestamp = lime.time.parse(format, raw)
+        if timestamp then return timestamp end
+    end
+    return nil
+end
+
 local function absoluteUrl(value)
     local url = trim(value)
     if url == "" then return "" end
@@ -190,17 +215,19 @@ local function resourceOf(vod)
     local coverUrl = absoluteUrl(vod.vod_pic or vod.pic or vod.cover)
     return {
         name = name,
-        author = cleanText(vod.vod_director or vod.vod_actor),
+        author = cleanText(vod.vod_director or vod.vod_author),
         url = detail,
         cover = coverUrl ~= "" and { url = coverUrl, headers = HEADERS } or nil,
         intro = cleanText(vod.vod_blurb or vod.vod_content or vod.vod_sub),
         latestChapter = cleanText(vod.vod_remarks or vod.note or vod.remarks),
         latestChapterUrl = detail,
-        kind = cleanText(vod.type_name),
-        tags = { "布布影视" },
+        tags = splitTags(vod.vod_tag),
+        meta = cleanText(vod.vod_actor) ~= "" and {
+            { label = cleanText(vod.type_name) == "动漫" and "声优" or "演员", field = cleanText(vod.vod_actor) },
+        } or nil,
         wordCount = 0,
         chapterCount = tonumber(vod.vod_total or vod.vod_serial) or 0,
-        latestUpdateTime = 0,
+        latestUpdateTime = parseVodTime(vod.vod_time),
     }
 end
 
@@ -438,6 +465,41 @@ local function test(content)
         end
         return { ok = true, message = "Cloudflare challenge 识别通过" }
     end
+    if content == "metadata" then
+        local resource = resourceOf({
+            vod_id = "meta-test",
+            vod_name = "测试视频",
+            vod_director = "导演",
+            vod_actor = "声优甲",
+            type_name = "动漫",
+            vod_tag = "动作, 科幻，悬疑",
+            vod_total = "12",
+            vod_time = "2026-07-20 12:34:56",
+        })
+        if not resource
+            or resource.author ~= "导演"
+            or #resource.tags ~= 3
+            or resource.tags[1] ~= "动作"
+            or resource.tags[2] ~= "科幻"
+            or resource.tags[3] ~= "悬疑"
+            or not resource.meta
+            or resource.meta[1].label ~= "声优"
+            or resource.meta[1].field ~= "声优甲"
+            or resource.chapterCount ~= 12
+            or not resource.latestUpdateTime then
+            error("视频元数据映射测试失败")
+        end
+        local movie = resourceOf({
+            vod_id = "meta-movie",
+            vod_name = "测试电影",
+            vod_actor = "演员甲",
+            type_name = "电影",
+        })
+        if not movie.meta or movie.meta[1].label ~= "演员" then
+            error("非动漫视频演员字段映射测试失败")
+        end
+        return { ok = true, message = "视频元数据映射通过" }
+    end
     local ok, result = pcall(function()
         local records = search("黑夜告白", 1)
         if #records == 0 then error("搜索无结果") end
@@ -465,7 +527,7 @@ return {
         homepage = "https://bbys.app",
         logo = "https://bbys.app/favicon.ico",
     },
-    requires = { "browser", "crypto", "http", "json", "storage" },
+    requires = { "browser", "crypto", "http", "json", "storage", "time" },
     contract = {
         kind = "resource",
         content = "video",

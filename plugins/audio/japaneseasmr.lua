@@ -5,6 +5,7 @@ local DEFAULT_HEADERS = {
     ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     ["Accept-Language"] = "ja,en;q=0.9,zh;q=0.8",
 }
+local PENDING_BROWSER_KEY = "japaneseasmr:pending"
 
 -- ============================================================
 -- 工具(全部 local,且定义顺序在调用方之前)
@@ -27,25 +28,70 @@ local function urlEncode(s)
     end))
 end
 
+-- Cloudflare Managed Challenge 不能由普通 HTTP 客户端执行，交给宿主认证 WebView。
+local function requiresBrowserAuth(response)
+    local status = tonumber(response and response.status) or 0
+    if status ~= 401 and status ~= 403 and status ~= 503 then return false end
+    local html = tostring(response and response.body or ""):lower()
+    return html:find("cf%-challenge") ~= nil
+        or html:find("cf%-chl%-") ~= nil
+        or html:find("cloudflare", 1, true) ~= nil
+        or html:find("just a moment", 1, true) ~= nil
+end
+
+local function browserChallengeOptions(url)
+    return {
+        profile = "default",
+        url = url,
+        reason = "challenge",
+        scopes = {
+            { scheme = "https", host = "japaneseasmr.com", includeSubdomains = true },
+        },
+        completion = {
+            mode = "any",
+            cookieNames = { "cf_clearance" },
+        },
+        request = {
+            method = "GET",
+            url = url,
+            headers = {
+                ["Accept"] = DEFAULT_HEADERS["Accept"],
+                ["Accept-Language"] = DEFAULT_HEADERS["Accept-Language"],
+            },
+        },
+    }
+end
+
+local function openBrowserChallenge(url)
+    return lime.browser.open(browserChallengeOptions(url))
+end
+
 local function httpGet(path)
     local headers = {}; for k, v in pairs(DEFAULT_HEADERS) do headers[k] = v end
     headers["Referer"] = BASE .. "/"
     -- 允许传入绝对 URL(详情页 <a href>);否则按相对路径拼 BASE
     local target = (tostring(path or ""):match("^https?://")) and path or (BASE .. path)
-    local response = lime.http.get(target, headers)
-    if not response.body or response.body == "" then return nil, "empty body" end
-    return response.body, nil, response.status
-end
 
--- 仅在业务请求明确进入认证/Cloudflare challenge 时中止当前入口并打开认证窗口。
-local function requiresBrowserAuth(body, status)
-    if status == 401 or status == 403 or status == 503 then
-        return true
+    if trim(lime.storage.get(PENDING_BROWSER_KEY)) == target then
+        local replay = openBrowserChallenge(target)
+        lime.storage.remove(PENDING_BROWSER_KEY)
+        if not replay or replay.status < 200 or replay.status >= 300 then
+            return nil, "browser request failed: HTTP " .. tostring(replay and replay.status or 0), replay and replay.status
+        end
+        return replay.body, nil, replay.status
     end
-    local html = tostring(body or ""):lower()
-    return html:find("cf%-challenge") ~= nil
-        or html:find("cf%-chl%-") ~= nil
-        or html:find("just a moment", 1, true) ~= nil
+
+    local response = lime.http.get(target, headers)
+    if requiresBrowserAuth(response) then
+        lime.storage.set(PENDING_BROWSER_KEY, target)
+        response = openBrowserChallenge(target)
+        lime.storage.remove(PENDING_BROWSER_KEY)
+    end
+    if not response or response.status < 200 or response.status >= 300 then
+        return nil, "HTTP " .. tostring(response and response.status or 0), response and response.status
+    end
+    if not response.body or response.body == "" then return nil, "empty body", response.status end
+    return response.body, nil, response.status
 end
 
 -- "12分07秒" / "11分19秒" 等日文时长字符串 → 秒
@@ -69,6 +115,22 @@ local function extractShortcodeAttr(html, name)
     local v = html:match(name .. "%s*=%s*'([^']*)'")
     if not v then v = html:match(name .. "%s*=%s*\"([^\"]*)\"") end
     return v
+end
+
+-- 同一作品拆分出的章节共享一个稳定物理媒体身份，避免按 chapter/block 重复缓存整份 HLS。
+local function productAssetId(productUrl)
+    local url = tostring(productUrl or "")
+    local productId = url:match("/(%d+)/") or url:match("/(%d+)$")
+    return productId and ("japaneseasmr-product-" .. productId) or nil
+end
+
+-- 详情页声优节点可能包含一个或多个 CV；只移除标签前缀，保留网站给出的姓名顺序。
+local function parseVoiceActors(doc)
+    local node = lime.dom.select(doc, "#voice_actors")
+    local value = node and trim(lime.dom.text(node)) or ""
+    value = value:gsub("^CV%s*:%s*", "")
+    value = trim(value:gsub("^CV%s*：%s*", ""))
+    return value ~= "" and value or nil
 end
 
 -- "2026-07-11" ISO date → unix seconds(简化到当天的 12:00 UTC,Lime 端不要求精度)
@@ -172,7 +234,13 @@ local function fetchProductData(productUrl)
     -- #audioplayer audio src(跳过 video,用户要求"只取音频不取视频")
     local audioEl = lime.dom.select(doc, "#audioplayer audio")
         or lime.dom.select(doc, "audio")
-    local m3u8 = (audioEl and lime.dom.attr(audioEl, "src")) or nil
+    local sourceEl = audioEl and lime.dom.select(audioEl, "source") or nil
+    local m3u8 = audioEl and (
+        lime.dom.attr(audioEl, "src")
+        or lime.dom.attr(audioEl, "data-src")
+        or (sourceEl and lime.dom.attr(sourceEl, "src"))
+        or (sourceEl and lime.dom.attr(sourceEl, "data-src"))
+    ) or nil
 
     -- Track startMs 秒数(优先 #plyr-chapter-playtable 的 data-value 精确秒)
     local starts = { 0 }
@@ -196,7 +264,9 @@ local function fetchProductData(productUrl)
     local titles = parseTrackTitles(doc, #starts)
 
     -- 元信息 shortcode
-    local cv = extractShortcodeAttr(html, "cv") or extractShortcodeAttr(html, "cv ")
+    local cv = parseVoiceActors(doc)
+        or extractShortcodeAttr(html, "cv")
+        or extractShortcodeAttr(html, "cv ")
     local gallery = tonumber(extractShortcodeAttr(html, "gallery") or "0") or 0
 
     -- 详情页文本
@@ -337,21 +407,7 @@ local function buildExplorePath(keyword, filters, page)
 end
 
 local function explore()
-    local html, err, status = httpGet("/tags/")
-    if requiresBrowserAuth(html, status) then
-        lime.browser.open({
-            profile = "default",
-            url = "https://japaneseasmr.com",
-            reason = "challenge", -- login/challenge/captcha/consent/other
-            scopes = {
-                { scheme = "https", host = "japaneseasmr.com", includeSubdomains = true },
-            },
-            completion = {
-                mode = "all",
-                cookieNames = { "cf_clearance" },
-            },
-        })
-    end
+    local html, err = httpGet("/tags/")
 
     local filters = baseExploreFilters()
 
@@ -487,6 +543,7 @@ local function chapterContent(request)
         sources = {
             {
                 id = "v-main",
+                assetId = productAssetId(resourceUrl),
                 quality = "high",
                 format = "hls",
                 mimeType = "application/vnd.apple.mpegurl",
@@ -589,13 +646,13 @@ return {
     manifest = {
         name = "japaneseasmr",
         package = "com.example.japaneseasmr.lime",
-        version = "0.0.2",
+        version = "0.0.4",
         author = "ai",
         description = "japaneseasmr",
         homepage = "https://japaneseasmr.com",
         logo = "https://japaneseasmr.com/favicon.ico",
     },
-    requires = { "browser", "dom", "http", "log", "time" },
+    requires = { "browser", "dom", "http", "log", "storage", "time" },
     contract = {
         kind = "resource",
         content = "audio",

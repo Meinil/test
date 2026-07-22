@@ -366,10 +366,10 @@ local function warmSite()
 end
 
 -- =====================================================================
--- 搜索 search(keyword, page)
+-- 普通搜索实现
 -- =====================================================================
 
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     lime.log.info("search: keyword=" .. tostring(keyword))
     if not keyword or keyword == "" then return {} end
 
@@ -614,31 +614,35 @@ local function explore()
 end
 
 -- =====================================================================
--- 探索页搜索 exploreSearch(keyword, payload) — 可选
--- payload = { keyword, filters = { [field] = value }, current }
+-- 统一搜索 query = { keyword, filters?, current? }
 -- 返回 { records = ResourceDetailVO[], total? }
 -- 站点发现页是分类目录页(/<catId>[/N.html]),关键字不可用,直接忽略
 -- =====================================================================
 
-local function exploreSearch(keyword, payload)
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
+    end
     warmSite()
 
     local sortId
-    if payload and payload.filters and payload.filters.category then
-        sortId = tostring(payload.filters.category)
+    if query.filters.category then
+        sortId = tostring(query.filters.category)
     else
         sortId = CATEGORIES[1].field -- 默认"玄幻奇幻"
     end
 
     local page = 1
-    if payload and payload.current then
-        page = tonumber(payload.current) or 1
+    if query.current then
+        page = tonumber(query.current) or 1
     end
 
     local url = BASE .. "/" .. sortId .. "/"
     if page > 1 then url = BASE .. "/" .. sortId .. "/" .. page .. ".html" end
 
-    lime.log.info("exploreSearch: url=" .. url)
+    lime.log.info("search: url=" .. url)
 
     local headers = {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
@@ -695,8 +699,8 @@ end
 
 return {
     protocol = "lime-plugin", apiVersion = 1,
-    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.1", author = "Ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
+    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.2", author = "Ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
     requires = { "crypto", "dom", "http", "log", "time" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
     hooks = { test = test },
 }

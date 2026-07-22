@@ -312,7 +312,7 @@ local function fetchUrl(urlTemplate, keyword, page)
     return httpGet(url, BASE .. "/"), url
 end
 
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
     return parseSearchResources(html, finalUrl)
 end
@@ -370,28 +370,33 @@ local function explore()
     }
 end
 
-local function exploreSearch(keyword, payload)
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
+    end
     local selected = CATEGORIES[1]
-    local wanted = payload and payload.filters and payload.filters.category
+    local wanted = query.filters.category
     for _, c in ipairs(CATEGORIES) do
         if tostring(c.field) == tostring(wanted) then selected = c end
     end
-    local page = payload and tonumber(payload.current) or 1
+    local page = tonumber(query.current) or 1
     local html, finalUrl = fetchUrl(selected.url, keyword, page)
     return { records = parseRankResources(html, finalUrl) }
 end
 
 local function test(content)
-    local results = search(content or "美母为妻", 1)
-    local count = type(results) == "table" and #results or 0
+    local result = search({ keyword = content or "美母为妻" })
+    local count = type(result.records) == "table" and #result.records or 0
     local message = "爱丽丝书屋 smoke path returned " .. tostring(count) .. " items"
     return { ok = true, message = message }
 end
 
 return {
     protocol = "lime-plugin", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.1", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.2", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
     requires = { "crypto", "dom", "http", "log", "time" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
     hooks = { test = test },
 }

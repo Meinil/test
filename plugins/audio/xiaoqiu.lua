@@ -49,11 +49,12 @@ local function resourceOf(song)
     }
 end
 
-local function search(keyword, page)
-    local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = tonumber(page) or 1, query = tostring(keyword or ""), search_type = 0 } } })
+local function search(query)
+    query = query or {}
+    local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = 1, query = tostring(query.keyword or ""), search_type = 0 } } })
     local list = (((data.req_1 or {}).data or {}).body or {}).song or {}; local out = {}
     for _, song in ipairs(list.list or {}) do if trim(song.mid or song.songmid) ~= "" then out[#out + 1] = resourceOf(song) end end
-    return out
+    return { records = out }
 end
 
 local function resourceInfo(url)
@@ -246,7 +247,7 @@ return {
     manifest = {
         name = "小秋音乐",
         package = "com.huibq.xiaoqiu.lime",
-        version = "1.0.0",
+        version = "1.0.1",
         author = "ai",
         description = "参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源",
     },

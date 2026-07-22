@@ -366,7 +366,7 @@ local function punchInAccount(form)
 end
 
 --- 搜索漫画。
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     local current = tonumber(page) or 1
     local path = "comics/advanced-search?page=" .. current
     local data, err = requestJson("POST", path, {
@@ -390,16 +390,20 @@ local function explore()
     }
 end
 
---- 发现页搜索。
-local function exploreSearch(keyword, payload)
+--- 统一普通搜索与发现页搜索。
+local function search(query)
     if not lime.storage.get("token") then
         error("请先登录")
     end
-    payload = payload or {}
-    local filters = payload.filters or {}
-    local current = tonumber(payload.current) or 1
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
+    end
+    local filters = query.filters
+    local current = tonumber(query.current) or 1
     local sort = filters.sort or "dd"
-    local kw = trim(keyword or payload.keyword)
+    local kw = trim(keyword)
 
     local function pageResult(comics)
         comics = comics or {}
@@ -776,7 +780,7 @@ return {
     manifest = {
         name = "Picacg",
         package = "com.meinil.lime.ai.picacg",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。",
         homepage = "https://www.bikamanhua.com.cn",
@@ -790,7 +794,7 @@ return {
         resourceInfo = resourceInfo,
         chapterList = chapterList,
         chapterContent = chapterContent,
-        explore = { filters = explore, search = exploreSearch },
+        explore = explore,
     },
     hooks = {
         settings = { list = settings, action = settingsAction },

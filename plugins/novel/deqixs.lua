@@ -242,9 +242,9 @@ local function buildBookItem(name, author, bookUrl, coverImageUrl, lastChapter, 
 end
 
 -- =====================================================================
--- 搜索 search(keyword, page)
+-- 普通搜索实现
 -- =====================================================================
-local function search(keyword, page)
+local function searchKeyword(keyword)
     lime.log.info("searching: " .. tostring(keyword))
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -631,26 +631,30 @@ local function explore()
 end
 
 -- =====================================================================
--- 探索页搜索 exploreSearch(keyword, payload) — 可选
--- payload = { keyword, filters = { [field] = value }, current }
+-- 统一搜索 query = { keyword, filters?, current? }
 -- 返回 { records = ResourceDetailVO[], total? }
 -- content 字段可选;前端 fallback 链:book.content ?? plugin.content ?? 'novel'
 -- =====================================================================
-local function exploreSearch(keyword, payload)
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword) }
+    end
     local sortId = "0"
-    if payload and payload.filters and payload.filters.category then
-        sortId = tostring(payload.filters.category)
+    if query.filters.category then
+        sortId = tostring(query.filters.category)
     end
 
     local page = 1
-    if payload and payload.current then
-        page = tonumber(payload.current) or 1
+    if query.current then
+        page = tonumber(query.current) or 1
     end
 
     -- keyword:本插件发现页不参与关键字过滤(网站 /sort/ 不支持),直接忽略
 
     local url = BASE .. "/sort/" .. sortId .. "/" .. page .. ".html"
-    lime.log.info("exploreSearch: url=" .. url)
+    lime.log.info("search: url=" .. url)
 
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -734,8 +738,8 @@ end
 
 return {
     protocol = "lime-plugin", apiVersion = 1,
-    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.1", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
+    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.2", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
     hooks = { test = test },
 }

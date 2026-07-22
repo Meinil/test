@@ -302,7 +302,7 @@ local function detectFormat(url)
     return "file", nil
 end
 
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     local query = "ac=detail&wd=" .. urlEncode(keyword) .. "&pg=" .. tostring(tonumber(page) or 1)
     return resourcesOf(getJson(apiUrl(query)))
 end
@@ -326,14 +326,18 @@ local function explore()
     }
 end
 
-local function exploreSearch(keyword, payload)
-    payload = payload or {}
-    if trim(keyword) ~= "" then
-        return { records = search(keyword, payload.current) }
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
     end
-    local filters = payload.filters or {}
+    if trim(keyword) ~= "" then
+        return { records = searchKeyword(keyword, query.current) }
+    end
+    local filters = query.filters
     local category = tostring(filters.category or "1")
-    local page = math.max(1, math.floor(tonumber(payload.current) or 1))
+    local page = math.max(1, math.floor(tonumber(query.current) or 1))
     return { records = resourcesOf(getJson(apiUrl("ac=detail&t=" .. category .. "&pg=" .. page))) }
 end
 
@@ -501,7 +505,7 @@ local function test(content)
         return { ok = true, message = "视频元数据映射通过" }
     end
     local ok, result = pcall(function()
-        local records = search("黑夜告白", 1)
+        local records = search({ keyword = "黑夜告白" }).records
         if #records == 0 then error("搜索无结果") end
         local info = resourceInfo(records[1].url)
         local catalog = chapterList(info.url)
@@ -521,7 +525,7 @@ return {
     manifest = {
         name = "布布影视",
         package = "com.meinil.lime.video.bbys",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "FreeOK/MacCMS 视频源，目录严格使用插件设置中选定的线路",
         homepage = "https://bbys.app",
@@ -535,7 +539,7 @@ return {
         resourceInfo = resourceInfo,
         chapterList = chapterList,
         chapterContent = chapterContent,
-        explore = { filters = explore, search = exploreSearch },
+        explore = explore,
     },
     hooks = {
         settings = { list = settings, action = settingsAction },

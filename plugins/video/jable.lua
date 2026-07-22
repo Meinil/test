@@ -208,7 +208,7 @@ local function parseVideoList(html)
     return resources
 end
 
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     local n = fromPage(page)
     local encoded = urlEncode(keyword)
     local baseUrl = BASE .. "/search/" .. encoded .. "/"
@@ -415,17 +415,21 @@ local function exploreFilters()
     }
 end
 
-local function exploreSearch(keyword, payload)
-    payload = payload or {}
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
 
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
+    end
     if trim(keyword) ~= "" then
-        return { records = search(keyword, payload.current) }
+        return { records = searchKeyword(keyword, query.current) }
     end
 
-    local filters = payload.filters or {}
+    local filters = query.filters
     local categorySlug = trim(tostring(filters.category or ""))
     local selectedSort = normalizeSort(filters.sortBy)
-    local current = fromPage(payload.current)
+    local current = fromPage(query.current)
 
     local baseUrl
     local blockId
@@ -492,7 +496,7 @@ local function test(content)
     end
 
     local ok, result = pcall(function()
-        local records = search("乙愛麗絲", 1)
+        local records = search({ keyword = "乙愛麗絲" }).records
         if #records == 0 then error("搜索无结果") end
         local info = resourceInfo(records[1].url)
         if not info.name or info.name == "" then error("资源详情名称获取失败") end
@@ -513,7 +517,7 @@ return {
     manifest = {
         name = "Jable TV",
         package = "com.meinil.lime.video.jable",
-        version = "0.0.4",
+        version = "0.0.5",
         author = "lime",
         description = "Jable.TV | 免費高清AV在線看 | J片 AV看到飽",
         homepage = "https://jable.tv",
@@ -527,7 +531,7 @@ return {
         resourceInfo = resourceInfo,
         chapterList = chapterList,
         chapterContent = chapterContent,
-        explore = { filters = exploreFilters, search = exploreSearch },
+        explore = exploreFilters,
     },
     hooks = {
         test = test,

@@ -229,7 +229,7 @@ end
 -- ============================================================
 -- search (站内搜索,跨插件批量)
 -- ============================================================
-local function search(keyword, page)
+local function searchKeyword(keyword, page)
     page = page or 1
     local html, err = httpGet("/?s=" .. urlEncode(keyword) .. "&paged=" .. page)
     if not html then return {} end
@@ -243,7 +243,7 @@ local function search(keyword, page)
 end
 
 -- ============================================================
--- explore / exploreSearch
+-- explore / unified search
 -- ============================================================
 local function baseExploreFilters()
     return {
@@ -374,10 +374,14 @@ local function explore()
     return filters
 end
 
-local function exploreSearch(keyword, payload)
-    payload = payload or {}
-    local page = math.max(1, math.floor(tonumber(payload.current) or 1))
-    local filters = payload.filters or {}
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword, 1) }
+    end
+    local page = math.max(1, math.floor(tonumber(query.current) or 1))
+    local filters = query.filters
     local sort = filters.sort or "recent"
 
     -- Random 每次请求都会重排，只允许首屏并通过下拉刷新获取下一批。
@@ -387,7 +391,7 @@ local function exploreSearch(keyword, payload)
 
     local path = buildExplorePath(keyword, filters, page)
     local html, err = httpGet(path)
-    lime.log.info("exploreSearch: path=" .. path .. " err=" .. tostring(err))
+    lime.log.info("search: path=" .. path .. " err=" .. tostring(err))
     if not html then return { records = {} } end
     local doc = lime.dom.parse(html)
     local out = {}
@@ -516,7 +520,7 @@ local function test(content)
         count = count + #group.children
     end
     local filters = baseExploreFilters()
-    local randomEnd = exploreSearch("", { current = 2, filters = { sort = "random" } })
+    local randomEnd = search({ keyword = "", current = 2, filters = { sort = "random" } })
     local productHtml, productErr = httpGet("/148155/")
     if not productHtml then
         return { ok = false, message = "详情页标签测试失败: " .. tostring(productErr or "network") }
@@ -548,7 +552,7 @@ local function test(content)
             local second = buildExplorePath(scope.keyword, scope.filters, 2)
             if first ~= scope.first .. scope.separator .. sortCase.query
                 or second ~= scope.second .. scope.separator .. sortCase.query then
-                return { ok = false, message = "exploreSearch URL 组合异常: " .. sortCase.value }
+                return { ok = false, message = "search URL 组合异常: " .. sortCase.value }
             end
         end
     end
@@ -574,7 +578,7 @@ local function test(content)
         return { ok = false, message = "详情页章节标题解析异常" }
     end
     if type(randomEnd) ~= "table" or type(randomEnd.records) ~= "table" or #randomEnd.records ~= 0 then
-        return { ok = false, message = "exploreSearch 分页对象异常" }
+        return { ok = false, message = "search 分页对象异常" }
     end
     return { ok = true, message = "OK · groups=" .. #groups .. " · tags=" .. count .. " · productTags=" .. #productTags }
 end
@@ -585,7 +589,7 @@ return {
     manifest = {
         name = "japaneseasmr",
         package = "com.example.japaneseasmr.lime",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "japaneseasmr",
         homepage = "https://japaneseasmr.com",
@@ -599,7 +603,7 @@ return {
         resourceInfo = resourceInfo,
         chapterList = chapterList,
         chapterContent = chapterContent,
-        explore = { filters = explore, search = exploreSearch },
+        explore = explore,
     },
     hooks = {
         test = test,

@@ -223,7 +223,7 @@ local function parseExploreResources(html, baseUrl)
     return out
 end
 
-local function search(keyword, page)
+local function searchKeyword(keyword)
     local url = BASE .. "/s.php"
     local body = "type=articlename&s=" .. encodeGbLike(keyword or "")
     local html = httpPost(url, body, BASE .. "/")
@@ -331,13 +331,18 @@ local function explore()
     }
 end
 
-local function exploreSearch(keyword, payload)
+local function search(query)
+    query = query or {}
+    local keyword = query.keyword or ""
+    if query.filters == nil then
+        return { records = searchKeyword(keyword) }
+    end
     local selected = CATEGORIES[1]
-    local wanted = payload and payload.filters and payload.filters.category
+    local wanted = query.filters.category
     for _, c in ipairs(CATEGORIES) do
         if tostring(c.field) == tostring(wanted) then selected = c end
     end
-    local page = payload and tonumber(payload.current) or 1
+    local page = tonumber(query.current) or 1
     local url = absolutize(selected.url:gsub("{{page}}", tostring(page)), BASE)
     lime.log.info("url" .. url)
     local html = httpGet(url, BASE .. "/")
@@ -354,8 +359,8 @@ end
 
 return {
     protocol = "lime-plugin", apiVersion = 1,
-    manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.1", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
+    manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.2", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
     requires = { "crypto", "dom", "http", "log" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = { filters = explore, search = exploreSearch } },
+    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
     hooks = { test = test },
 }

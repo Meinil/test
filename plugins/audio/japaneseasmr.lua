@@ -563,9 +563,9 @@ local function chapterContent(request)
 end
 
 -- ============================================================
--- test(冒烟;失败/成功都返 TestResultVO)
+-- 内部回归检查；正式 hooks.test() 在下方返回逐入口检测项数组。
 -- ============================================================
-local function test(content)
+local function legacyTest(content)
     local html, err = httpGet("/tags/")
     if not html then
         return { ok = false, message = "无法连接 " .. BASE .. ": " .. tostring(err or "network") }
@@ -638,6 +638,17 @@ local function test(content)
         return { ok = false, message = "search 分页对象异常" }
     end
     return { ok = true, message = "OK · groups=" .. #groups .. " · tags=" .. count .. " · productTags=" .. #productTags }
+end
+
+local function test()
+    local results, records, info, catalog = {}, nil, nil, nil
+    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    records = run("search", function() local value = search({ keyword = "asmr" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
+    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
+    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    run("explore", explore)
+    return results
 end
 
 return {

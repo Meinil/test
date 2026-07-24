@@ -241,6 +241,16 @@ local function chapterContent(request)
     }
 end
 
+local function test()
+    local results, records, info, catalog = {}, nil, nil, nil
+    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    records = run("search", function() local value = search({ keyword = "周杰伦" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
+    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
+    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    return results
+end
+
 return {
     protocol = "lime-plugin",
     apiVersion = 1,
@@ -260,4 +270,5 @@ return {
         chapterList = chapterList,
         chapterContent = chapterContent,
     },
+    hooks = { test = test },
 }

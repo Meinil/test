@@ -710,29 +710,17 @@ local function search(query)
 end
 
 -- =====================================================================
--- 冒烟测试 test(content)
--- 简单 connectivity check:取探索页第一页,验证站点可达
+-- 无参契约冒烟检测，逐项返回 passed / failed / blocked。
 -- =====================================================================
-local function test(content)
-    local headers = {
-        ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        ["Accept-Encoding"] = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"] = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-platform"] = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = "1",
-        ["Sec-Fetch-Dest"] = "document",
-        ["Sec-Fetch-Mode"] = "navigate",
-        ["Sec-Fetch-Site"] = "none",
-        ["Sec-Fetch-User"] = "?1",
-    }
-    local data = httpGet(BASE .. "/sort/0/1.html", headers)
-    if not data or data == "" then
-        error("Test failed: empty response")
-    end
-    local message = "得奇小说网 reachable, " .. #data .. " bytes from explore"
-    return { ok = true, message = message }
+local function test()
+    local results, records, info, catalog = {}, nil, nil, nil
+    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    records = run("search", function() local value = search({ keyword = "小说" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
+    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
+    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    run("explore", explore)
+    return results
 end
 
 

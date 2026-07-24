@@ -454,7 +454,7 @@ local function settingsAction(action, data)
     error("不支持的播放线路")
 end
 
-local function test(content)
+local function legacyTest(content)
     if content == "loose-json" then
         local value, parseError = parseJsonLoose('{"list":[{"vod_name":"第一行\n第二行"}]}')
         if not value then error("宽松 JSON 测试失败: " .. tostring(parseError)) end
@@ -516,6 +516,17 @@ local function test(content)
     end)
     if ok then return result end
     error(tostring(result))
+end
+
+local function test()
+    local results, records, info, catalog = {}, nil, nil, nil
+    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    records = run("search", function() local value = search({ keyword = "黑夜告白" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
+    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
+    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    run("explore", explore)
+    return results
 end
 
 

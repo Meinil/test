@@ -5,47 +5,47 @@
     {
       "name": "小秋音乐",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/xiaoqiu.lua",
-      "hash": "c3ba38bcb456f71d16f7f1255c0b55f94b6e355abf7a1901d181f97f528b9cbe"
+      "hash": "4f9237835365ab7d71233bf11cf898d921b651bfc3c714961e511f67160bb012"
     },
     {
       "name": "japaneseasmr",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
-      "hash": "3b9047a775648de0c3085d3c2a929f8ad2c6c2ed51506b9a0c4f80e10f8ef3ba"
+      "hash": "3e583b4b4f24356beae4376ead9aa8188e5560b33fa6a048187ad46fcdbb904b"
     },
     {
       "name": "Picacg",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua",
-      "hash": "8d63398a6963e668e2f4ca9a71a4c4425274722f213d10718b81ad8b3e67ec79"
+      "hash": "a61b6b64a31e24dc2fa3a42941bf5c8e5705eaf252652998b6377f8b8165ff82"
     },
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
-      "hash": "be28936f0da80085ec2e59b50d63a1a2cff68c2e7301f81321056d7ad21a0f7b"
+      "hash": "d1e950e84c376105311cf5c8f078d829d2ba547a9bc90c4c69622c4868b85c29"
     },
     {
       "name": "得奇小说网",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
-      "hash": "555aa2a1cae9ea3b24b9d70013348bf741320cf2d0ef973f434650c340076e35"
+      "hash": "da693e1feb60d4340d851179c676c28b178cc218781b3f042dd26664b7d95597"
     },
     {
       "name": "奇书网",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua",
-      "hash": "b101e3886bc6bb105f9ca6fb1b6733e2dc326f79f53d6f018a6763a2f3a60234"
+      "hash": "72c744546413af442383bb600a8f3f7b7b0cb3700fa5b695f08db0098d5a7b61"
     },
     {
       "name": "天美小说",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/tianmeixs.lua",
-      "hash": "1f887d6f696d48c4a3b5612ee43e21137111c0c2120823087d8fc0801ed3a2ff"
+      "hash": "6f4e5d68543b3c5e9bae3c30b4efba03cc174ada278cc2fb6b06999fc254d1f2"
     },
     {
       "name": "布布影视",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/bbys.lua",
-      "hash": "b6fcfd586ee248de2aa00cd9729be7e2ffd286a0bea1991409c810a3378b7dbd"
+      "hash": "af6b3fc5c28684f9a3bd9d9a62d5626cd8c36b26d8da1888a40547a7007573fc"
     },
     {
       "name": "Jable TV",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/jable.lua",
-      "hash": "9b23b194a2927c31749b9ed33c1d55f59030f3d20d47c016a4786126d45435b7"
+      "hash": "9850b715b70ada526d91843ee2e21b09c5d07accf2d2fb3fe884b82d1b170331"
     }
   ]
 }

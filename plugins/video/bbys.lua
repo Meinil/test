@@ -302,10 +302,7 @@ local function detectFormat(url)
     return "file", nil
 end
 
-local function searchKeyword(keyword, page)
-    local query = "ac=detail&wd=" .. urlEncode(keyword) .. "&pg=" .. tostring(tonumber(page) or 1)
-    return resourcesOf(getJson(apiUrl(query)))
-end
+
 
 local function resourceInfo(url)
     local vod = firstVod(getJson(url))
@@ -326,19 +323,20 @@ local function explore()
     }
 end
 
+-- MacCMS 提供明确 pagecount；不从每页条数估算 total。
 local function search(query)
-    query = query or {}
-    local keyword = query.keyword or ""
-    if query.filters == nil then
-        return { records = searchKeyword(keyword, 1) }
-    end
-    if trim(keyword) ~= "" then
-        return { records = searchKeyword(keyword, query.current) }
-    end
-    local filters = query.filters
-    local category = tostring(filters.category or "1")
-    local page = math.max(1, math.floor(tonumber(query.current) or 1))
-    return { records = resourcesOf(getJson(apiUrl("ac=detail&t=" .. category .. "&pg=" .. page))) }
+    local current = math.max(1, math.floor(tonumber(query.cursor) or 1))
+    local keyword = trim(query.keyword or "")
+    local request = "ac=detail&pg=" .. current
+    if keyword ~= "" then request = request .. "&wd=" .. urlEncode(keyword)
+    else request = request .. "&t=" .. tostring(query.filters.category or "1") end
+    local data = getJson(apiUrl(request))
+    local result = { records = resourcesOf(data) }
+    local pages = tonumber(data.pagecount)
+    if pages and current < pages then result.nextCursor = tostring(current + 1) end
+    local total = tonumber(data.total)
+    if total and total >= 0 and total == math.floor(total) then result.total = total end
+    return result
 end
 
 local function chapterList(resourceUrl, options)
@@ -505,7 +503,7 @@ local function legacyTest(content)
         return { ok = true, message = "视频元数据映射通过" }
     end
     local ok, result = pcall(function()
-        local records = search({ keyword = "黑夜告白" }).records
+        local records = search({ keyword = "黑夜告白", filters = {} }).records
         if #records == 0 then error("搜索无结果") end
         local info = resourceInfo(records[1].url)
         local catalog = chapterList(info.url)
@@ -518,10 +516,10 @@ local function legacyTest(content)
     error(tostring(result))
 end
 
-local function test()
+local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "黑夜告白" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "黑夜告白", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
@@ -529,6 +527,33 @@ local function test()
     return results
 end
 
+
+-- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
+local function resourceRecord(record)
+    record.id = record.url
+    record.content = "video"
+    return record
+end
+
+local function searchResources(query)
+    local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function describeResource(request)
+    local record = resourceRecord(resourceInfo(request.resource.url))
+    record.id = request.resource.id
+    return record
+end
+
+local function listResourceChapters(request)
+    return chapterList(request.resource.url, { routeId = request.routeId })
+end
+
+local function invokeSettings(request)
+    return settingsAction(request.action, request.data)
+end
 
 return {
     protocol = "lime-plugin",
@@ -543,17 +568,15 @@ return {
         logo = "https://bbys.app/favicon.ico",
     },
     requires = { "browser", "crypto", "http", "json", "storage", "time" },
-    contract = {
-        kind = "resource",
-        content = "video",
-        search = search,
-        resourceInfo = resourceInfo,
-        chapterList = chapterList,
-        chapterContent = chapterContent,
+
+    capabilities = { resource = {
+        contents = { "video" },
+        search = searchResources, resourceInfo = describeResource,
+        chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    },
+    } },
     hooks = {
-        settings = { list = settings, action = settingsAction },
+        settings = { list = settings, action = invokeSettings },
         test = test,
     },
 }

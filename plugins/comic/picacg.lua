@@ -366,16 +366,7 @@ local function punchInAccount(form)
 end
 
 --- 搜索漫画。
-local function searchKeyword(keyword, page)
-    local current = tonumber(page) or 1
-    local path = "comics/advanced-search?page=" .. current
-    local data, err = requestJson("POST", path, {
-        keyword = tostring(keyword or ""),
-        sort = "dd",
-    })
-    if not data then error(err) end
-    return docsToResources(data.comics and data.comics.docs or {})
-end
+
 
 --- 发现页筛选声明。
 local function explore()
@@ -397,17 +388,16 @@ local function search(query)
     end
     query = query or {}
     local keyword = query.keyword or ""
-    if query.filters == nil then
-        return { records = searchKeyword(keyword, 1) }
-    end
     local filters = query.filters
-    local current = tonumber(query.current) or 1
+    local current = tonumber(query.cursor) or 1
     local sort = filters.sort or "dd"
     local kw = trim(keyword)
 
     local function pageResult(comics)
         comics = comics or {}
         local result = { records = docsToResources(comics.docs or {}) }
+        local pages = tonumber(comics.pages)
+        if pages and current < pages then result.nextCursor = tostring(current + 1) end
         local total = tonumber(comics.total)
         if total and total >= 0 and total == math.floor(total) then result.total = total end
         return result
@@ -606,10 +596,10 @@ local function legacyTest(content)
     error(tostring(result))
 end
 
-local function test()
+local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "comic" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "comic", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
@@ -785,6 +775,33 @@ local function settingsAction(action, data)
     error("settingsAction: unknown action '" .. tostring(action) .. "'")
 end
 
+-- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
+local function resourceRecord(record)
+    record.id = record.url
+    record.content = "comic"
+    return record
+end
+
+local function searchResources(query)
+    local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function describeResource(request)
+    local record = resourceRecord(resourceInfo(request.resource.url))
+    record.id = request.resource.id
+    return record
+end
+
+local function listResourceChapters(request)
+    return chapterList(request.resource.url, { routeId = request.routeId })
+end
+
+local function invokeSettings(request)
+    return settingsAction(request.action, request.data)
+end
+
 return {
     protocol = "lime-plugin",
     apiVersion = 1,
@@ -798,17 +815,15 @@ return {
         logo = "https://www.bikamanhua.com.cn/logo.png",
     },
     requires = { "crypto", "http", "json", "log", "storage", "time" },
-    contract = {
-        kind = "resource",
-        content = "comic",
-        search = search,
-        resourceInfo = resourceInfo,
-        chapterList = chapterList,
-        chapterContent = chapterContent,
+
+    capabilities = { resource = {
+        contents = { "comic" },
+        search = searchResources, resourceInfo = describeResource,
+        chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    },
+    } },
     hooks = {
-        settings = { list = settings, action = settingsAction },
+        settings = { list = settings, action = invokeSettings },
         test = test,
     },
 }

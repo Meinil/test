@@ -51,10 +51,17 @@ end
 
 local function search(query)
     query = query or {}
-    local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = 1, query = tostring(query.keyword or ""), search_type = 0 } } })
+    local current = math.max(1, math.floor(tonumber(query.cursor) or 1))
+    local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = current, query = tostring(query.keyword or ""), search_type = 0 } } })
     local list = (((data.req_1 or {}).data or {}).body or {}).song or {}; local out = {}
     for _, song in ipairs(list.list or {}) do if trim(song.mid or song.songmid) ~= "" then out[#out + 1] = resourceOf(song) end end
-    return { records = out }
+    local result = { records = out }
+    local total = tonumber(list.totalnum)
+    if total and total >= 0 and total == math.floor(total) then
+        result.total = total
+        if current * PAGE_SIZE < total then result.nextCursor = tostring(current + 1) end
+    end
+    return result
 end
 
 local function resourceInfo(url)
@@ -241,14 +248,37 @@ local function chapterContent(request)
     }
 end
 
-local function test()
+local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "周杰伦" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "周杰伦", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
     return results
+end
+
+-- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
+local function resourceRecord(record)
+    record.id = record.url
+    record.content = "audio"
+    return record
+end
+
+local function searchResources(query)
+    local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function describeResource(request)
+    local record = resourceRecord(resourceInfo(request.resource.url))
+    record.id = request.resource.id
+    return record
+end
+
+local function listResourceChapters(request)
+    return chapterList(request.resource.url, { routeId = request.routeId })
 end
 
 return {
@@ -262,13 +292,11 @@ return {
         description = "参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源",
     },
     requires = { "crypto", "http", "json", "log" },
-    contract = {
-        kind = "resource",
-        content = "audio",
-        search = search,
-        resourceInfo = resourceInfo,
-        chapterList = chapterList,
-        chapterContent = chapterContent,
-    },
+
+    capabilities = { resource = {
+        contents = { "audio" },
+        search = searchResources, resourceInfo = describeResource,
+        chapterList = listResourceChapters, chapterContent = chapterContent,
+    } },
     hooks = { test = test },
 }

@@ -314,7 +314,7 @@ end
 
 local function searchKeyword(keyword, page)
     local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
-    return parseSearchResources(html, finalUrl)
+    return parseSearchResources(html, finalUrl), html
 end
 
 local function resourceInfo(bookUrl)
@@ -370,23 +370,43 @@ local function explore()
     }
 end
 
+-- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
+local function pageResult(records, html, current)
+    local result = { records = records }
+    if not html then return result end
+    local doc = lime.dom.parse(html)
+    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
+        local label = trim(lime.dom.text(link) or ""):lower()
+        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
+        local href = trim(lime.dom.attr(link, "href") or "")
+        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
+            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
+            result.nextCursor = tostring((tonumber(current) or 1) + 1)
+            break
+        end
+    end
+    return result
+end
+
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
-    if query.filters == nil then
-        return { records = searchKeyword(keyword, 1) }
+    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
+        local page = tonumber(query.cursor) or 1
+        local records, html = searchKeyword(keyword, page)
+        return pageResult(records, html, page)
     end
     local selected = CATEGORIES[1]
     local wanted = query.filters.category
     for _, c in ipairs(CATEGORIES) do
         if tostring(c.field) == tostring(wanted) then selected = c end
     end
-    local page = tonumber(query.current) or 1
+    local page = tonumber(query.cursor) or 1
     local html, finalUrl = fetchUrl(selected.url, keyword, page)
-    return { records = parseRankResources(html, finalUrl) }
+    return pageResult(parseRankResources(html, finalUrl), html, page)
 end
 
-local function test()
+local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
         local started = lime.time.unix_ms()
@@ -394,7 +414,7 @@ local function test()
         results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value), durationMs = lime.time.unix_ms() - started }
         return ok and value or nil
     end
-    records = run("search", function() local value = search({ keyword = "美母为妻" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "美母为妻", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
@@ -402,10 +422,39 @@ local function test()
     return results
 end
 
+-- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
+local function resourceRecord(record)
+    record.id = record.url
+    record.content = "novel"
+    return record
+end
+
+local function searchResources(query)
+    local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function describeResource(request)
+    local record = resourceRecord(resourceInfo(request.resource.url))
+    record.id = request.resource.id
+    return record
+end
+
+local function listResourceChapters(request)
+    return chapterList(request.resource.url, { routeId = request.routeId })
+end
+
 return {
     protocol = "lime-plugin", apiVersion = 1,
     manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.2", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
     requires = { "crypto", "dom", "http", "log", "time" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
+
+    capabilities = { resource = {
+        contents = { "novel" },
+        search = searchResources, resourceInfo = describeResource,
+        chapterList = listResourceChapters, chapterContent = chapterContent,
+        explore = explore,
+    } },
     hooks = { test = test },
 }

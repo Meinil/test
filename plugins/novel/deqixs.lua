@@ -635,10 +635,28 @@ end
 -- 返回 { records = ResourceDetailVO[], total? }
 -- content 字段可选;前端 fallback 链:book.content ?? plugin.content ?? 'novel'
 -- =====================================================================
+-- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
+local function pageResult(records, html, current)
+    local result = { records = records }
+    if not html then return result end
+    local doc = lime.dom.parse(html)
+    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
+        local label = trim(lime.dom.text(link) or ""):lower()
+        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
+        local href = trim(lime.dom.attr(link, "href") or "")
+        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
+            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
+            result.nextCursor = tostring((tonumber(current) or 1) + 1)
+            break
+        end
+    end
+    return result
+end
+
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
-    if query.filters == nil then
+    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
         return { records = searchKeyword(keyword) }
     end
     local sortId = "0"
@@ -647,8 +665,8 @@ local function search(query)
     end
 
     local page = 1
-    if query.current then
-        page = tonumber(query.current) or 1
+    if query.cursor then
+        page = tonumber(query.cursor) or 1
     end
 
     -- keyword:本插件发现页不参与关键字过滤(网站 /sort/ 不支持),直接忽略
@@ -706,16 +724,16 @@ local function search(query)
     if #results == 0 then
         return { records = {} }
     end
-    return { records = results }
+    return pageResult(results, html, page)
 end
 
 -- =====================================================================
--- 无参契约冒烟检测，逐项返回 passed / failed / blocked。
+-- 按能力契约冒烟检测，逐项返回 passed / failed / blocked。
 -- =====================================================================
-local function test()
+local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "小说" }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "小说", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
@@ -724,10 +742,39 @@ local function test()
 end
 
 
+-- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
+local function resourceRecord(record)
+    record.id = record.url
+    record.content = "novel"
+    return record
+end
+
+local function searchResources(query)
+    local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function describeResource(request)
+    local record = resourceRecord(resourceInfo(request.resource.url))
+    record.id = request.resource.id
+    return record
+end
+
+local function listResourceChapters(request)
+    return chapterList(request.resource.url, { routeId = request.routeId })
+end
+
 return {
     protocol = "lime-plugin", apiVersion = 1,
     manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.2", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
-    contract = { kind = "resource", content = "novel", search = search, resourceInfo = resourceInfo, chapterList = chapterList, chapterContent = chapterContent, explore = explore },
+
+    capabilities = { resource = {
+        contents = { "novel" },
+        search = searchResources, resourceInfo = describeResource,
+        chapterList = listResourceChapters, chapterContent = chapterContent,
+        explore = explore,
+    } },
     hooks = { test = test },
 }

@@ -382,7 +382,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "novel"
+
     return record
 end
 
@@ -403,12 +403,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", apiVersion = 1,
+    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
     manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.2", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
     requires = { "crypto", "dom", "http", "log" },
 
     capabilities = { resource = {
-        contents = { "novel" },
+        content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

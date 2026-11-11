@@ -745,7 +745,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "novel"
+
     return record
 end
 
@@ -766,12 +766,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", apiVersion = 1,
+    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
     manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.2", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
 
     capabilities = { resource = {
-        contents = { "novel" },
+        content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

@@ -778,7 +778,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "comic"
+
     return record
 end
 
@@ -803,7 +803,7 @@ local function invokeSettings(request)
 end
 
 return {
-    protocol = "lime-plugin",
+    protocol = "lime-plugin", kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "Picacg",
@@ -817,7 +817,7 @@ return {
     requires = { "crypto", "http", "json", "log", "storage", "time" },
 
     capabilities = { resource = {
-        contents = { "comic" },
+        content = "comic",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

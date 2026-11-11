@@ -261,7 +261,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "audio"
+
     return record
 end
 
@@ -282,7 +282,7 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin",
+    protocol = "lime-plugin", kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "小秋音乐",
@@ -294,7 +294,7 @@ return {
     requires = { "crypto", "http", "json", "log" },
 
     capabilities = { resource = {
-        contents = { "audio" },
+        content = "audio",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
     } },

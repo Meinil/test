@@ -531,7 +531,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "video"
+
     return record
 end
 
@@ -556,7 +556,7 @@ local function invokeSettings(request)
 end
 
 return {
-    protocol = "lime-plugin",
+    protocol = "lime-plugin", kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "布布影视",
@@ -570,7 +570,7 @@ return {
     requires = { "browser", "crypto", "http", "json", "storage", "time" },
 
     capabilities = { resource = {
-        contents = { "video" },
+        content = "video",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

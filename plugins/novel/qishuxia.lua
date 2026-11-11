@@ -705,7 +705,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "novel"
+
     return record
 end
 
@@ -726,12 +726,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", apiVersion = 1,
+    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
     manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.2", author = "Ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {
-        contents = { "novel" },
+        content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

@@ -425,7 +425,7 @@ end
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
 local function resourceRecord(record)
     record.id = record.url
-    record.content = "novel"
+
     return record
 end
 
@@ -446,12 +446,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", apiVersion = 1,
+    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
     manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.2", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {
-        contents = { "novel" },
+        content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,

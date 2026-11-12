@@ -6,7 +6,7 @@ local BROWSER_HEADERS = {
     ["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
     ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
     ["Accept-Language"] = "zh-CN,zh;q=0.9",
-    ["Accept-Encoding"] = "gzip, deflate, br, zstd",
+    ["Accept-Encoding"] = "gzip, deflate, br",
     ["sec-ch-ua"] = '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
     ["sec-ch-ua-mobile"] = "?0",
     ["sec-ch-ua-platform"] = '"macOS"',
@@ -306,7 +306,8 @@ end
 
 local function fetchUrl(urlTemplate, keyword, page)
     local url = tostring(urlTemplate or "")
-    url = url:gsub("{{key}}", encodeUrl(keyword or ""))
+    -- URL 编码中的百分号是字面值，不能作为 gsub 的捕获替换表达式。
+    url = url:gsub("{{key}}", function() return encodeUrl(keyword or "") end)
     url = url:gsub("{{page}}", tostring(page or 1))
     url = absolutize(url, BASE)
     return httpGet(url, BASE .. "/"), url
@@ -447,7 +448,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.2", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.3", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {

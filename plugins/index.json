@@ -22,12 +22,12 @@
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
-      "hash": "0240b796010cd837067131cc03e56ef0f124abe5464cee455f11ceb54f98b503"
+      "hash": "123d47fc26dca4c66beb02576d0eecbd2524417617078e97f45c7d5adeb35d45"
     },
     {
       "name": "得奇小说网",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
-      "hash": "dc215eefbd3f3052965ee0b6d7cbd0465f31b4586ead85f2f861e38935af32b2"
+      "hash": "565231e5e24a7c80093e56c1d02733c9ebd2538cd3cd3cf7945136cae7e6793e"
     },
     {
       "name": "奇书网",

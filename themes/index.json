@@ -1,5 +1,7 @@
 {
-  "version": 1,
+  "name": "Lime 测试主题",
+  "icon": "https://raw.githubusercontent.com/Meinil/lime-tauri/main/src-tauri/icons/icon.png",
+  "version": "1.0.0",
   "kind": "theme",
   "entries": [
     {

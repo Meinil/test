@@ -1,7 +1,7 @@
 -- =====================================================================
 -- 配置
 -- =====================================================================
-local BASE = "https://www.deqixs.cc"
+local BASE = "https://www.deqixss.com"
 -- 东八区(秒),与 alicesw.lua 一致
 local TZ_OFFSET = 8 * 60 * 60
 
@@ -12,7 +12,8 @@ local TZ_OFFSET = 8 * 60 * 60
 local BROWSER_HEADERS = {
     ["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
     ["Accept-Language"] = "zh-CN,zh;q=0.9",
-    ["Accept-Encoding"] = "gzip, deflate, br, zstd",
+    -- 仅声明宿主 HTTP 客户端已启用的解压格式。
+    ["Accept-Encoding"] = "gzip, deflate, br",
     ["sec-ch-ua"] = '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
     ["sec-ch-ua-platform"] = '"macOS"',
 }
@@ -767,7 +768,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.2", author = "Ai", description = "得奇小说网", homepage = "https://www.deqixs.cc", logo = "https://www.deqixs.cc/favicon.ico" },
+    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.3", author = "Ai", description = "得奇小说网", homepage = BASE, logo = BASE .. "/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
 
     capabilities = { resource = {

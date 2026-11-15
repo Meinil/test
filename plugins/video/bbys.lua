@@ -561,7 +561,7 @@ return {
     manifest = {
         name = "布布影视",
         package = "com.meinil.lime.video.bbys",
-        version = "0.0.2",
+        version = "0.0.1",
         author = "ai",
         description = "FreeOK/MacCMS 视频源，目录严格使用插件设置中选定的线路",
         homepage = "https://bbys.app",

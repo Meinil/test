@@ -311,9 +311,11 @@ local function searchKeyword(keyword)
         local authorEls = selectAllIn(itemEl, "div.author")
         local author = ""
         for _, ae in ipairs(authorEls) do
-            local at = lime.dom.text(ae) or ""
-            if at:sub(1, 4) == "作者：" then
-                author = at:sub(5)
+            local at = trim(lime.dom.text(ae) or "")
+            -- Lua 字符串按字节截取；完整匹配中文前缀后提取作者。
+            local name = at:match("^作者：(.*)$")
+            if name then
+                author = trim(name)
                 break
             end
         end
@@ -708,9 +710,11 @@ local function search(query)
         local author = ""
         local authorEls = selectAllIn(itemEl, "div.author")
         for _, ae in ipairs(authorEls) do
-            local at = lime.dom.text(ae)
-            if at:sub(1, 4) == "作者：" then
-                author = at:sub(5)
+            local at = trim(lime.dom.text(ae) or "")
+            -- Lua 字符串按字节截取；完整匹配中文前缀后提取作者。
+            local name = at:match("^作者：(.*)$")
+            if name then
+                author = trim(name)
                 break
             end
         end
@@ -768,7 +772,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.3", author = "Ai", description = "得奇小说网", homepage = BASE, logo = BASE .. "/favicon.ico" },
+    manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.1", author = "ai", description = "得奇小说网", homepage = BASE, logo = BASE .. "/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
 
     capabilities = { resource = {

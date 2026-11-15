@@ -808,7 +808,7 @@ return {
     manifest = {
         name = "Picacg",
         package = "com.meinil.lime.ai.picacg",
-        version = "0.0.2",
+        version = "0.0.1",
         author = "ai",
         description = "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。",
         homepage = "https://www.bikamanhua.com.cn",

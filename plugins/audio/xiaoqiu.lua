@@ -287,7 +287,7 @@ return {
     manifest = {
         name = "小秋音乐",
         package = "com.huibq.xiaoqiu.lime",
-        version = "1.0.1",
+        version = "0.0.1",
         author = "ai",
         description = "参考 MusicFree 小秋音源接口适配,单曲映射为单章节音频资源",
     },

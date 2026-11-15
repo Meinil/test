@@ -572,8 +572,8 @@ return {
     manifest = {
         name = "Jable TV",
         package = "com.meinil.lime.video.jable",
-        version = "0.0.5",
-        author = "lime",
+        version = "0.0.1",
+        author = "ai",
         description = "Jable.TV | 免費高清AV在線看 | J片 AV看到飽",
         homepage = "https://jable.tv",
         logo = "https://jable.tv/favicon.ico",

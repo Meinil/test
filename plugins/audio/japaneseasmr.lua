@@ -700,7 +700,7 @@ return {
     manifest = {
         name = "japaneseasmr",
         package = "com.example.japaneseasmr.lime",
-        version = "0.0.4",
+        version = "0.0.1",
         author = "ai",
         description = "japaneseasmr",
         homepage = "https://japaneseasmr.com",

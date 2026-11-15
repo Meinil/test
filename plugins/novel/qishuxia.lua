@@ -727,7 +727,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.2", author = "Ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
+    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.1", author = "ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {

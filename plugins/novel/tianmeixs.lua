@@ -404,7 +404,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.2", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
+    manifest = { name = "天美小说", package = "com.meinil.lime.ai.tianmeixs", version = "0.0.1", author = "ai", description = "Converted from Legado source 天美小说.", homepage = "https://m.tianmeixs.com" },
     requires = { "crypto", "dom", "http", "log" },
 
     capabilities = { resource = {

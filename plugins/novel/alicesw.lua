@@ -448,7 +448,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.3", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.1", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {

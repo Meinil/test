@@ -1,47 +1,47 @@
 {
   "name": "Lime 测试插件",
   "icon": "https://raw.githubusercontent.com/Meinil/lime-tauri/main/src-tauri/icons/icon.png",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "kind": "plugin",
   "entries": [
     {
       "name": "小秋音乐",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/audio/xiaoqiu.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/xiaoqiu.lua",
       "hash": "2fb586343afa68bd59de83e132a6a2667eaa79b609e39c49a13051bafc5eb169"
     },
     {
       "name": "japaneseasmr",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/audio/japaneseasmr.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
       "hash": "c2b73c323bf8fe7f0389d0f0b94ff81cab135e0195af3c6263221f5827724ea7"
     },
     {
       "name": "Picacg",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/comic/picacg.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua",
       "hash": "6450ab8d1397d0ef94207d191dce276af243c81cc9014e5dbe8d68e47c032cb0"
     },
     {
       "name": "爱丽丝书屋",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/novel/alicesw.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
       "hash": "a04039691b8bc05d79bd6fdf91e817d52a7e9f427a86676bd2af7e10f0d6f48e"
     },
     {
       "name": "得奇小说网",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/novel/deqixs.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
       "hash": "5aed0d0f60e550d875caa44982eefb93e795796487dea67306943b85b0aa75dc"
     },
     {
       "name": "奇书网",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/novel/qishuxia.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua",
       "hash": "830ba047229da34c582a42c59bdf313c22c25ae2a3fa26a3ea5e5648935bd9ae"
     },
     {
       "name": "布布影视",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/video/bbys.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/bbys.lua",
       "hash": "e5bde923056e83f011a474b11b1404d73da9523e3d9c294391c1d10b4791da32"
     },
     {
       "name": "Jable TV",
-      "sourceUrl": "http://127.0.0.1:4173/plugins/video/jable.lua",
+      "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/jable.lua",
       "hash": "c0955968f8b0462d852136079daf7cb795ca5a727d8f2b83defaf69412ea7c0a"
     }
   ]

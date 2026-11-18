@@ -415,42 +415,18 @@ local function exploreFilters()
     }
 end
 
--- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
-local function pageResult(records, html, current)
-    local result = { records = records }
-    if not html then return result end
-    local doc = lime.dom.parse(html)
-    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
-        local label = trim(lime.dom.text(link) or ""):lower()
-        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
-        local href = trim(lime.dom.attr(link, "href") or "")
-        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
-            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
-            result.nextCursor = tostring((tonumber(current) or 1) + 1)
-            break
-        end
-    end
-    return result
-end
-
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
 
-    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.cursor) or 1
-        local records, html = searchKeyword(keyword, page)
-        return pageResult(records, html, page)
-    end
     if trim(keyword) ~= "" then
-        local records, html = searchKeyword(keyword, query.cursor)
-        return pageResult(records, html, query.cursor)
+        return { records = searchKeyword(keyword, query.page) }
     end
 
     local filters = query.filters
     local categorySlug = trim(tostring(filters.category or ""))
     local selectedSort = normalizeSort(filters.sortBy)
-    local current = fromPage(query.cursor)
+    local current = fromPage(query.page)
 
     local baseUrl
     local blockId
@@ -466,7 +442,7 @@ local function search(query)
     local url = listPageUrl(baseUrl, blockId, current, nil, selectedSort)
     local html = getPage(url)
     local records = parseVideoList(html)
-    return pageResult(records, html, current)
+    return { records = records }
 end
 
 local function legacyTest(content)
@@ -517,7 +493,7 @@ local function legacyTest(content)
     end
 
     local ok, result = pcall(function()
-        local records = search({ keyword = "乙愛麗絲", filters = {} }).records
+        local records = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records
         if #records == 0 then error("搜索无结果") end
         local info = resourceInfo(records[1].url)
         if not info.name or info.name == "" then error("资源详情名称获取失败") end
@@ -535,7 +511,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "乙愛麗絲", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end

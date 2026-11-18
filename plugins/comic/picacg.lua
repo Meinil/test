@@ -389,18 +389,20 @@ local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
     local filters = query.filters
-    local current = tonumber(query.cursor) or 1
+    local current = tonumber(query.page) or 1
     local sort = filters.sort or "dd"
     local kw = trim(keyword)
 
     local function pageResult(comics)
-        comics = comics or {}
-        local result = { records = docsToResources(comics.docs or {}) }
+        if type(comics) ~= "table" then error("Picacg 搜索响应缺少漫画分页") end
         local pages = tonumber(comics.pages)
-        if pages and current < pages then result.nextCursor = tostring(current + 1) end
         local total = tonumber(comics.total)
-        if total and total >= 0 and total == math.floor(total) then result.total = total end
-        return result
+        if not total or total < 0 or total ~= math.floor(total) then total = nil end
+        if pages and current > pages then return { records = {}, total = total } end
+        local actualPage = tonumber(comics.page)
+        if actualPage and actualPage ~= current then error("Picacg 返回的页码与请求不一致") end
+        if type(comics.docs) ~= "table" then error("Picacg 搜索缺少结果列表") end
+        return { records = docsToResources(comics.docs), total = total }
     end
 
     if kw ~= "" then
@@ -420,11 +422,13 @@ local function search(query)
 
     local source = filters.source or "latest"
     if source == "random" then
+        if current > 1 then return { records = {} } end
         local data, err = requestJson("GET", "comics/random")
         if not data then error(err) end
         return { records = docsToResources(data.comics or {}) }
     end
     if source == "H24" or source == "D7" or source == "D30" then
+        if current > 1 then return { records = {} } end
         local path = "comics/leaderboard?tt=" .. source .. "&ct=VC"
         local data, err = requestJson("GET", path)
         if not data then error(err) end
@@ -599,7 +603,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "comic", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "comic", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end

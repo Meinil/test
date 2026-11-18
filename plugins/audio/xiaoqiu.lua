@@ -51,17 +51,24 @@ end
 
 local function search(query)
     query = query or {}
-    local current = math.max(1, math.floor(tonumber(query.cursor) or 1))
+    local current = math.max(1, math.floor(tonumber(query.page) or 1))
     local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = current, query = tostring(query.keyword or ""), search_type = 0 } } })
-    local list = (((data.req_1 or {}).data or {}).body or {}).song or {}; local out = {}
-    for _, song in ipairs(list.list or {}) do if trim(song.mid or song.songmid) ~= "" then out[#out + 1] = resourceOf(song) end end
-    local result = { records = out }
-    local total = tonumber(list.totalnum)
-    if total and total >= 0 and total == math.floor(total) then
-        result.total = total
-        if current * PAGE_SIZE < total then result.nextCursor = tostring(current + 1) end
+    local searchResponse = data.req_1
+    local list = searchResponse and ((searchResponse.data or {}).body or {}).song
+    if type(list) ~= "table" or (searchResponse.code and searchResponse.code ~= 0) then
+        error("QQ 音乐搜索响应无效")
     end
-    return result
+    local total = tonumber(list.totalnum)
+    if not total or total < 0 or total ~= math.floor(total) then total = nil end
+    if total and (current - 1) * PAGE_SIZE >= total then
+        return { records = {}, total = total }
+    end
+    if type(list.list) ~= "table" then error("QQ 音乐搜索缺少结果列表") end
+    local records = {}
+    for _, song in ipairs(list.list) do
+        if trim(song.mid or song.songmid) ~= "" then records[#records + 1] = resourceOf(song) end
+    end
+    return { records = records, total = total }
 end
 
 local function resourceInfo(url)
@@ -251,7 +258,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "周杰伦", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "周杰伦", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end

@@ -302,7 +302,7 @@ end
 local function searchKeyword(keyword, page)
     page = page or 1
     local html, err = httpGet("/?s=" .. urlEncode(keyword) .. "&paged=" .. page)
-    if not html then return {} end
+    if not html then error(err) end
     local doc = lime.dom.parse(html)
     local out = {}
     for _, card in ipairs(lime.dom.selectAll(doc, "li.site-archive-post")) do
@@ -430,37 +430,18 @@ local function explore()
     return filters
 end
 
--- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
-local function pageResult(records, html, current)
-    local result = { records = records }
-    if not html then return result end
-    local doc = lime.dom.parse(html)
-    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
-        local label = trim(lime.dom.text(link) or ""):lower()
-        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
-        local href = trim(lime.dom.attr(link, "href") or "")
-        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
-            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
-            result.nextCursor = tostring((tonumber(current) or 1) + 1)
-            break
-        end
-    end
-    return result
-end
-
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
     if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.cursor) or 1
-        local records, html = searchKeyword(keyword, page)
-        return pageResult(records, html, page)
+        local page = tonumber(query.page) or 1
+        return { records = searchKeyword(keyword, page) }
     end
-    local page = math.max(1, math.floor(tonumber(query.cursor) or 1))
+    local page = math.max(1, math.floor(tonumber(query.page) or 1))
     local filters = query.filters
     local sort = filters.sort or "recent"
 
-    -- Random 每次请求都会重排，只允许首屏并通过下拉刷新获取下一批。
+    -- Random 每次请求都会重排，只允许首屏并通过显式刷新获取下一批。
     if sort == "random" and page > 1 then
         return { records = {} }
     end
@@ -468,14 +449,14 @@ local function search(query)
     local path = buildExplorePath(keyword, filters, page)
     local html, err = httpGet(path)
     lime.log.info("search: path=" .. path .. " err=" .. tostring(err))
-    if not html then return { records = {} } end
+    if not html then error(err) end
     local doc = lime.dom.parse(html)
     local out = {}
     for _, card in ipairs(lime.dom.selectAll(doc, "li.site-archive-post")) do
         local cv = selectCvParagraph(card)
         out[#out + 1] = resourceOf(card, cv, BASE .. "/")
     end
-    return sort == "random" and { records = out } or pageResult(out, html, page)
+    return { records = out }
 end
 
 -- ============================================================
@@ -597,7 +578,7 @@ local function legacyTest(content)
         count = count + #group.children
     end
     local filters = baseExploreFilters()
-    local randomEnd = search({ keyword = "", current = 2, filters = { sort = "random" } })
+    local randomEnd = search({ keyword = "", page = 2, filters = { sort = "random" } })
     local productHtml, productErr = httpGet("/148155/")
     if not productHtml then
         return { ok = false, message = "详情页标签测试失败: " .. tostring(productErr or "network") }
@@ -663,7 +644,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "asmr", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "asmr", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end

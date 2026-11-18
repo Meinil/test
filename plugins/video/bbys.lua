@@ -325,18 +325,22 @@ end
 
 -- MacCMS 提供明确 pagecount；不从每页条数估算 total。
 local function search(query)
-    local current = math.max(1, math.floor(tonumber(query.cursor) or 1))
+    local current = math.max(1, math.floor(tonumber(query.page) or 1))
     local keyword = trim(query.keyword or "")
     local request = "ac=detail&pg=" .. current
     if keyword ~= "" then request = request .. "&wd=" .. urlEncode(keyword)
     else request = request .. "&t=" .. tostring(query.filters.category or "1") end
     local data = getJson(apiUrl(request))
-    local result = { records = resourcesOf(data) }
     local pages = tonumber(data.pagecount)
-    if pages and current < pages then result.nextCursor = tostring(current + 1) end
     local total = tonumber(data.total)
-    if total and total >= 0 and total == math.floor(total) then result.total = total end
-    return result
+    if not total or total < 0 or total ~= math.floor(total) then total = nil end
+    if pages and current > pages then return { records = {}, total = total } end
+    local actualPage = tonumber(data.page)
+    if actualPage and actualPage ~= current then error("布布影视返回的页码与请求不一致") end
+    if type(data.list) ~= "table" and type(data.data) ~= "table" then
+        error("布布影视搜索缺少结果列表")
+    end
+    return { records = resourcesOf(data), total = total }
 end
 
 local function chapterList(resourceUrl, options)
@@ -503,7 +507,7 @@ local function legacyTest(content)
         return { ok = true, message = "视频元数据映射通过" }
     end
     local ok, result = pcall(function()
-        local records = search({ keyword = "黑夜告白", filters = {} }).records
+        local records = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records
         if #records == 0 then error("搜索无结果") end
         local info = resourceInfo(records[1].url)
         local catalog = chapterList(info.url)
@@ -519,7 +523,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "黑夜告白", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end

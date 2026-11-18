@@ -131,15 +131,16 @@ end
 -- 工具:HTTP 包装
 -- =====================================================================
 
---- GET 包装,失败 throw error(包含 reqwest err);成功返 body
-local function httpGet(url, headers)
+--- GET 成功返回正文；分类后续页可单独处理 HTTP 404。
+local function httpGet(url, headers, allowNotFound)
     local response = lime.http.get(url, headers)
     if response.status == 403 and response.body and response.body:find("window.location.href", 1, true) then
         lime.log.info("httpGet: retry after 403 js redirect challenge")
         response = lime.http.get(url, headers)
     end
+    if allowNotFound and response.status == 404 then return nil end
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.get: HTTP " .. tostring(response.status))
+        error("lime.http.get: HTTP " .. tostring(response.status) .. " (" .. url .. ")")
     end
     return response.body
 end
@@ -614,36 +615,17 @@ local function explore()
 end
 
 -- =====================================================================
--- 统一搜索 query = { keyword, filters?, current? }
+-- 统一搜索 query = { keyword, filters, page }
 -- 返回 { records = ResourceDetailVO[], total? }
 -- 站点发现页是分类目录页(/<catId>[/N.html]),关键字不可用,直接忽略
 -- =====================================================================
-
--- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
-local function pageResult(records, html, current)
-    local result = { records = records }
-    if not html then return result end
-    local doc = lime.dom.parse(html)
-    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
-        local label = trim(lime.dom.text(link) or ""):lower()
-        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
-        local href = trim(lime.dom.attr(link, "href") or "")
-        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
-            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
-            result.nextCursor = tostring((tonumber(current) or 1) + 1)
-            break
-        end
-    end
-    return result
-end
 
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
     if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.cursor) or 1
-        local records, html = searchKeyword(keyword, page)
-        return pageResult(records, html, page)
+        local page = tonumber(query.page) or 1
+        return { records = searchKeyword(keyword, page) }
     end
     warmSite()
 
@@ -654,13 +636,10 @@ local function search(query)
         sortId = CATEGORIES[1].field -- 默认"玄幻奇幻"
     end
 
-    local page = 1
-    if query.cursor then
-        page = tonumber(query.cursor) or 1
-    end
+    local page = query.page or 1
 
-    local url = BASE .. "/" .. sortId .. "/"
-    if page > 1 then url = BASE .. "/" .. sortId .. "/" .. page .. ".html" end
+    local firstUrl = BASE .. "/" .. sortId .. "/"
+    local url = page > 1 and (firstUrl .. page .. ".html") or firstUrl
 
     lime.log.info("search: url=" .. url)
 
@@ -680,10 +659,19 @@ local function search(query)
         ["Sec-Fetch-User"]           = "?1",
     }
 
-    local html = httpGet(url, headers)
+    local html = httpGet(url, headers, page > 1)
+    if not html then
+        -- 部分分类只提供首页。只有首页明确没有翻页链接，才能把后续页 404 当作空页。
+        local first = lime.dom.parse(httpGet(firstUrl, headers))
+        local pager = "ul.pagination.pagination-mga"
+        if lime.dom.select(first, pager) and not lime.dom.select(first, pager .. " a[href]") then
+            return { records = {} }
+        end
+        error("lime.http.get: HTTP 404 (" .. url .. ")")
+    end
 
     local doc = lime.dom.parse(html)
-    return pageResult(parseBooks(doc, "", false), html, page)
+    return { records = parseBooks(doc, "", false) }
 end
 
 -- =====================================================================
@@ -693,7 +681,7 @@ end
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
-    records = run("search", function() local value = search({ keyword = "小说", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "小说", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
     if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
@@ -727,7 +715,7 @@ end
 
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.1", author = "ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
+    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.2", author = "ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
     capabilities = { resource = {

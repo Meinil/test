@@ -1,59 +1,57 @@
-local BASE = "https://xn--vcsx64d.alicesw12.xyz"
-local CONTENT = "novel"
+local SITES = {
+    "https://www.alicesw.com",
+    "https://www.alicesw5.homes",
+    "https://www.alicesw6.homes",
+    "https://www.alicesw7.homes",
+}
+local SITE_KEY = "site_origin"
 local TZ_OFFSET = 8 * 60 * 60
 
-local BROWSER_HEADERS = {
-    ["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
-    ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    ["Accept-Language"] = "zh-CN,zh;q=0.9",
-    ["Accept-Encoding"] = "gzip, deflate, br",
-    ["sec-ch-ua"] = '"Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-    ["sec-ch-ua-mobile"] = "?0",
-    ["sec-ch-ua-platform"] = '"macOS"',
-    ["Sec-Fetch-Dest"] = "document",
-    ["Sec-Fetch-Mode"] = "navigate",
-    ["Sec-Fetch-Site"] = "none",
-    ["Sec-Fetch-User"] = "?1",
-    ["Upgrade-Insecure-Requests"] = "1",
-}
+local function siteOrigin()
+    local saved = lime.storage.get(SITE_KEY)
+    for _, site in ipairs(SITES) do
+        if site == saved then return site end
+    end
+    return SITES[1]
+end
 
 local CATEGORIES = {
-    { field = "hits", label = "总排行", url = BASE .. "/other/rank_hits/order/hits.html" },
-    { field = "hits_month", label = "月排行", url = BASE .. "/other/rank_hits/order/hits_month.html" },
-    { field = "hits_week", label = "周排行", url = BASE .. "/other/rank_hits/order/hits_week.html" },
-    { field = "hits_day", label = "日排行", url = BASE .. "/other/rank_hits/order/hits_day.html" },
-    { field = "71", label = "科幻", url = BASE .. "/all/id/71/order/hits+desc.html?page={{page}}" },
-    { field = "61", label = "校园", url = BASE .. "/all/id/61/order/hits+desc.html?page={{page}}" },
-    { field = "62", label = "玄幻", url = BASE .. "/all/id/62/order/hits+desc.html?page={{page}}" },
-    { field = "63", label = "乡村", url = BASE .. "/all/id/63/order/hits+desc.html?page={{page}}" },
-    { field = "64", label = "都市", url = BASE .. "/all/id/64/order/hits+desc.html?page={{page}}" },
-    { field = "65", label = "乱伦", url = BASE .. "/all/id/65/order/hits+desc.html?page={{page}}" },
-    { field = "67", label = "历史", url = BASE .. "/all/id/67/order/hits+desc.html?page={{page}}" },
-    { field = "68", label = "武侠", url = BASE .. "/all/id/68/order/hits+desc.html?page={{page}}" },
-    { field = "69", label = "系统", url = BASE .. "/all/id/69/order/hits+desc.html?page={{page}}" },
-    { field = "72", label = "明星", url = BASE .. "/all/id/72/order/hits+desc.html?page={{page}}" },
-    { field = "73", label = "同人", url = BASE .. "/all/id/73/order/hits+desc.html?page={{page}}" },
-    { field = "74", label = "强奸", url = BASE .. "/all/id/74/order/hits+desc.html?page={{page}}" },
-    { field = "75", label = "奇幻", url = BASE .. "/all/id/75/order/hits+desc.html?page={{page}}" },
-    { field = "79", label = "经典", url = BASE .. "/all/id/79/order/hits+desc.html?page={{page}}" },
-    { field = "70", label = "穿越", url = BASE .. "/all/id/70/order/hits+desc.html?page={{page}}" },
-    { field = "46", label = "凌辱", url = BASE .. "/all/id/46/order/hits+desc.html?page={{page}}" },
-    { field = "22", label = "反差", url = BASE .. "/all/id/22/order/hits+desc.html?page={{page}}" },
-    { field = "18", label = "堕落", url = BASE .. "/all/id/18/order/hits+desc.html?page={{page}}" },
-    { field = "19", label = "纯爱", url = BASE .. "/all/id/19/order/hits+desc.html?page={{page}}" },
-    { field = "52", label = "伪娘", url = BASE .. "/all/id/52/order/hits+desc.html?page={{page}}" },
-    { field = "48", label = "萝莉", url = BASE .. "/all/id/48/order/hits+desc.html?page={{page}}" },
-    { field = "56", label = "熟女", url = BASE .. "/all/id/56/order/hits+desc.html?page={{page}}" },
-    { field = "51", label = "禁忌", url = BASE .. "/all/id/51/order/hits+desc.html?page={{page}}" },
-    { field = "54", label = "NTR", url = BASE .. "/all/id/54/order/hits+desc.html?page={{page}}" },
-    { field = "53", label = "媚黑", url = BASE .. "/all/id/53/order/hits+desc.html?page={{page}}" },
-    { field = "55", label = "绿帽", url = BASE .. "/all/id/55/order/hits+desc.html?page={{page}}" },
-    { field = "58", label = "调教", url = BASE .. "/all/id/58/order/hits+desc.html?page={{page}}" },
-    { field = "59", label = "女主", url = BASE .. "/all/id/59/order/hits+desc.html?page={{page}}" },
-    { field = "50", label = "正太", url = BASE .. "/all/id/50/order/hits+desc.html?page={{page}}" },
-    { field = "43", label = "下克上", url = BASE .. "/all/id/43/order/hits+desc.html?page={{page}}" },
-    { field = "47", label = "百合", url = BASE .. "/all/id/47/order/hits+desc.html?page={{page}}" },
-    { field = "21", label = "重口", url = BASE .. "/all/id/21/order/hits+desc.html?page={{page}}" },
+    { field = "hits", label = "总排行" },
+    { field = "hits_month", label = "月排行" },
+    { field = "hits_week", label = "周排行" },
+    { field = "hits_day", label = "日排行" },
+    { field = "71", label = "科幻" },
+    { field = "61", label = "校园" },
+    { field = "62", label = "玄幻" },
+    { field = "63", label = "乡村" },
+    { field = "64", label = "都市" },
+    { field = "65", label = "乱伦" },
+    { field = "67", label = "历史" },
+    { field = "68", label = "武侠" },
+    { field = "69", label = "系统" },
+    { field = "72", label = "明星" },
+    { field = "73", label = "同人" },
+    { field = "74", label = "强奸" },
+    { field = "75", label = "奇幻" },
+    { field = "79", label = "经典" },
+    { field = "70", label = "穿越" },
+    { field = "46", label = "凌辱" },
+    { field = "22", label = "反差" },
+    { field = "18", label = "堕落" },
+    { field = "19", label = "纯爱" },
+    { field = "52", label = "伪娘" },
+    { field = "48", label = "萝莉" },
+    { field = "56", label = "熟女" },
+    { field = "51", label = "禁忌" },
+    { field = "54", label = "NTR" },
+    { field = "53", label = "媚黑" },
+    { field = "55", label = "绿帽" },
+    { field = "58", label = "调教" },
+    { field = "59", label = "女主" },
+    { field = "50", label = "正太" },
+    { field = "43", label = "下克上" },
+    { field = "47", label = "百合" },
+    { field = "21", label = "重口" },
 }
 
 local function trim(s)
@@ -84,44 +82,45 @@ local function selectAttr(doc, selector, key)
     return attr(lime.dom.select(doc, selector), key)
 end
 
-local function originOf(url)
-    return tostring(url or ""):match("^(https?://[^/]+)") or BASE
-end
-
+-- 站内资源使用当前线路，站外封面等资源保留原地址。
 local function absolutize(url, base)
     if not url or url == "" then return "" end
-    url = tostring(url)
     if url:match("^https?://") then return url end
     if url:sub(1, 2) == "//" then return "https:" .. url end
-    local b = base or BASE
-    if url:sub(1, 1) == "/" then return originOf(b) .. url end
-    local prefix = b:match("^(.*)/[^/]*$") or b
-    if not prefix:match("^https?://") then prefix = BASE end
-    return prefix .. "/" .. url
+    if url:sub(1, 1) == "/" then return base:match("^https?://[^/]+") .. url end
+    return (base:match("^(https?://.+)/[^/]*$") or base) .. "/" .. url
 end
 
-local function documentHeaders(referer)
-    local headers = {}
-    for k, v in pairs(BROWSER_HEADERS) do headers[k] = v end
-    if referer and referer ~= "" then
-        headers["Referer"] = referer
-        headers["Sec-Fetch-Site"] = "same-origin"
+-- 书籍和章节 URL 的路径在不同线路间相同。
+local function resourcePath(url)
+    return (url:gsub("^https?://[^/]+", ""))
+end
+
+-- 由站点页面完成协议确认；各镜像有独立的同源状态和 Profile。
+local function confirmSite(origin)
+    local host = origin:sub(9)
+    lime.browser.open({
+        profile = "consent-" .. host:gsub("%.", "-"), url = origin .. "/", reason = "consent",
+        scopes = {{ scheme = "https", host = host, includeSubdomains = false }},
+        captures = {{ origin = origin .. "/", keys = { "ageVerified" } }},
+        completion = { localStorageValues = { ageVerified = "true" } },
+    })
+end
+
+local function httpGet(url, retryRank)
+    confirmSite(siteOrigin())
+    local response = lime.http.get(url)
+    -- 排行页偶发 HTTP 500 时，只在当前已确认的线路重试一次。
+    if retryRank and response.status == 500 then
+        response = lime.http.get(url)
+        if response.status == 500 then
+            error("排行榜返回 HTTP 500，请稍后重试，或在插件设置中手动切换线路 (" .. url .. ")")
+        end
     end
-    return headers
-end
-
-local function httpGet(url, referer)
-    local response = lime.http.get(url, documentHeaders(referer or BASE .. "/"))
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.get: HTTP " .. tostring(response.status))
+        error("lime.http.get: HTTP " .. tostring(response.status) .. " (" .. url .. ")")
     end
     return response.body
-end
-
-local function encodeUrl(textValue)
-    local out, err = lime.crypto.urlEncode(tostring(textValue or ""))
-    if err then return tostring(textValue or "") end
-    return out or tostring(textValue or "")
 end
 
 local function parseCount(value)
@@ -142,14 +141,8 @@ local function parseTime(value, fmt)
     return 0
 end
 
-local function bookIdFromUrl(url)
-    return tostring(url or ""):match("/novel/(%d+)%.html")
-        or tostring(url or ""):match("/other/chapters/id/(%d+)%.html")
-end
-
 local function tocUrlFromBookUrl(url)
-    local id = bookIdFromUrl(url)
-    return id and (BASE .. "/other/chapters/id/" .. id .. ".html") or url
+    return (url:gsub("/novel/(%d+)%.html$", "/other/chapters/id/%1.html"))
 end
 
 local function htmlToText(html)
@@ -166,24 +159,6 @@ local function htmlToText(html)
         :gsub("&#39;", "'")
         :gsub("\r", "")
     return trim(s)
-end
-
-local function blocksFromText(raw)
-    local blocks = {}
-    for para in tostring(raw or ""):gmatch("[^\n]+") do
-        para = trim(para)
-        if para ~= "" then
-            blocks[#blocks + 1] = { id = "text-" .. tostring(#blocks + 1), type = "text", text = para }
-        end
-    end
-    return blocks
-end
-
-local function tagsFromKind(kind)
-    local tags = {}
-    kind = trim(kind)
-    if kind ~= "" then tags[#tags + 1] = kind end
-    return tags
 end
 
 local function resourceFromRankItem(item, baseUrl)
@@ -203,15 +178,14 @@ local function resourceFromRankItem(item, baseUrl)
         latestChapter = text(latestEl),
         latestChapterUrl = latestUrl,
         kind = kind,
-        tags = tagsFromKind(kind),
+        tags = kind ~= "" and { kind } or {},
         wordCount = parseCount(selectText(doc, "li.five")),
         chapterCount = 0,
         latestUpdateTime = latestTime,
     }
 end
 
-local function parseRankResources(html, baseUrl)
-    local doc = lime.dom.parse(html or "")
+local function parseRankResources(doc, baseUrl)
     local items = lime.dom.selectAll(doc, ".rec_rullist > ul")
     local out = {}
     for _, item in ipairs(items or {}) do
@@ -221,12 +195,10 @@ local function parseRankResources(html, baseUrl)
     return out
 end
 
-local function parseSearchResources(html, baseUrl)
-    local doc = lime.dom.parse(html or "")
+local function parseSearchResources(doc, baseUrl)
     local items = lime.dom.selectAll(doc, ".list-group .list-group-item")
-    if not items or #items == 0 then return parseRankResources(html, baseUrl) end
     local out = {}
-    for _, item in ipairs(items) do
+    for _, item in ipairs(items or {}) do
         local sub = subdoc(item)
         local titleEl = lime.dom.select(sub, "h5 a")
         local name = text(titleEl):gsub("^%d+%.", "")
@@ -244,7 +216,7 @@ local function parseSearchResources(html, baseUrl)
                 latestChapter = "",
                 latestChapterUrl = "",
                 kind = kind,
-                tags = tagsFromKind(kind),
+                tags = kind ~= "" and { kind } or {},
                 wordCount = parseCount(selectText(sub, "p.mb-1.text-muted")),
                 chapterCount = 0,
                 latestUpdateTime = latestTime,
@@ -267,15 +239,20 @@ local function parseDetail(html, url)
     local doc = lime.dom.parse(html or "")
     local name = selectText(doc, "#detail-box .novel_info h1")
     if name == "" then name = selectText(doc, ".box_info > .novel_title") end
-    if name == "" then name = selectText(doc, "meta[property='og:novel:book_name']") end
+    if name == "" then name = selectAttr(doc, "meta[property='og:novel:book_name']", "content") or "" end
     local author = selectText(doc, "#detail-box .novel_info a[href*='f=author']")
     if author == "" then author = selectText(doc, "#detail-box .novel_info p:nth-child(2) a") end
     local cover = selectAttr(doc, "#detail-box img", "data-src") or selectAttr(doc, "#detail-box img", "src") or ""
     local intro = selectText(doc, ".jianjie > p")
     if intro == "" then intro = selectText(doc, "#detail-box .book_intro") end
     local kind = selectText(doc, "#detail-box .novel_info a[href*='/lists/']")
-    local latestEl = lime.dom.select(doc, "#detail-box a.blue[href*='/book/']")
-    if not latestEl then latestEl = lime.dom.select(doc, ".book_newchap a") end
+    -- 「最新」在书籍信息第六行；下方章节列表还包含「查看所有章节」。
+    local latestEl = lime.dom.select(doc, "#detail-box .novel_info > p:nth-of-type(6) > a[href*='/book/']")
+    local tags = {}
+    for _, link in ipairs(lime.dom.selectAll(doc, "#detail-box .box_info > .tags_list a[href*='f=tag']")) do
+        local tag = trim((text(link):gsub("^#", "")))
+        if tag ~= "" then tags[#tags + 1] = tag end
+    end
     local wordCount, chapterCount = parseStats(doc)
     local tocUrl = tocUrlFromBookUrl(url)
     if chapterCount == 0 then
@@ -296,7 +273,7 @@ local function parseDetail(html, url)
         latestChapter = text(latestEl),
         latestChapterUrl = absolutize(attr(latestEl, "href"), url),
         kind = kind,
-        tags = tagsFromKind(kind),
+        tags = tags,
         tocUrl = tocUrl,
         wordCount = wordCount,
         chapterCount = chapterCount,
@@ -304,31 +281,18 @@ local function parseDetail(html, url)
     }
 end
 
-local function fetchUrl(urlTemplate, keyword, page)
-    local url = tostring(urlTemplate or "")
-    -- URL 编码中的百分号是字面值，不能作为 gsub 的捕获替换表达式。
-    url = url:gsub("{{key}}", function() return encodeUrl(keyword or "") end)
-    url = url:gsub("{{page}}", tostring(page or 1))
-    url = absolutize(url, BASE)
-    return httpGet(url, BASE .. "/"), url
+local function resourceInfo(request)
+    local url = absolutize(resourcePath(request.resource.url), siteOrigin())
+    local record = parseDetail(httpGet(url), url)
+    record.id = request.resource.id
+    return record
 end
 
-local function searchKeyword(keyword, page)
-    local html, finalUrl = fetchUrl(BASE .. "/search.html?q={{key}}&f=_al", keyword, page or 1)
-    return parseSearchResources(html, finalUrl), html
-end
-
-local function resourceInfo(bookUrl)
-    local fullUrl = absolutize(bookUrl, BASE)
-    local html = httpGet(fullUrl, BASE .. "/")
-    return parseDetail(html, fullUrl)
-end
-
-local function chapterList(bookUrl)
-    local fullUrl = absolutize(bookUrl, BASE)
-    if fullUrl:find("/novel/", 1, true) then fullUrl = tocUrlFromBookUrl(fullUrl) end
-    local html = httpGet(fullUrl, BASE .. "/")
+local function chapterList(request)
+    local fullUrl = tocUrlFromBookUrl(absolutize(resourcePath(request.resource.url), siteOrigin()))
+    local html = httpGet(fullUrl)
     local doc = lime.dom.parse(html)
+    if not lime.dom.select(doc, "ul.mulu_list") then error("未找到章节目录") end
     local links = lime.dom.selectAll(doc, "ul.mulu_list li a")
     local chapters = {}
     local seen = {}
@@ -337,16 +301,15 @@ local function chapterList(bookUrl)
         local name = text(link)
         if name ~= "" and url ~= "" and not seen[url] then
             seen[url] = true
-            chapters[#chapters + 1] = { id = url, name = name, url = url, index = #chapters + 1 }
+            chapters[#chapters + 1] = { id = SITES[1] .. resourcePath(url), name = name, url = url, index = #chapters + 1 }
         end
     end
     return { chapters = chapters }
 end
 
 local function chapterContent(request)
-    local chapterUrl = request.chapter.url
-    local fullUrl = absolutize(chapterUrl, BASE)
-    local html = httpGet(fullUrl, BASE .. "/")
+    local fullUrl = absolutize(resourcePath(request.chapter.url), siteOrigin())
+    local html = httpGet(fullUrl)
     local doc = lime.dom.parse(html)
     local paragraphs = lime.dom.selectAll(doc, ".read-content p")
     local chunks = {}
@@ -358,7 +321,13 @@ local function chapterContent(request)
         local contentEl = lime.dom.select(doc, ".read-content")
         if contentEl then chunks[#chunks + 1] = htmlToText(lime.dom.html(contentEl)) end
     end
-    local blocks = blocksFromText(table.concat(chunks, "\n"))
+    local blocks = {}
+    for para in table.concat(chunks, "\n"):gmatch("[^\n]+") do
+        para = trim(para)
+        if para ~= "" then
+            blocks[#blocks + 1] = { id = "text-" .. (#blocks + 1), type = "text", text = para }
+        end
+    end
     if #blocks == 0 then error("章节内容为空") end
     return { blocks = blocks }
 end
@@ -371,43 +340,71 @@ local function explore()
     }
 end
 
--- 只在页面明确提供可用的下一页链接时继续，不用结果条数推测。
-local function pageResult(records, html, current)
-    local result = { records = records }
-    if not html then return result end
-    local doc = lime.dom.parse(html)
-    for _, link in ipairs(lime.dom.selectAll(doc, "a")) do
-        local label = trim(lime.dom.text(link) or ""):lower()
-        local rel = tostring(lime.dom.attr(link, "rel") or ""):lower()
-        local href = trim(lime.dom.attr(link, "href") or "")
-        if href ~= "" and href ~= "#" and not href:lower():match("^javascript:")
-            and (rel == "next" or label == "下一页" or label == "下页" or label == "next" or label == "next page") then
-            result.nextCursor = tostring((tonumber(current) or 1) + 1)
-            break
+local function search(query)
+    local keyword = trim(query.keyword)
+    local filters = query.filters or {}
+    local page = query.page or 1
+    local origin = siteOrigin()
+    local url, doc, records
+    if keyword ~= "" and next(filters) == nil then
+        local encoded, err = lime.crypto.urlEncode(keyword)
+        if not encoded then error("搜索词编码失败：" .. tostring(err)) end
+        url = origin .. "/search.html?q=" .. encoded .. "&f=_all&p=" .. page
+        doc = lime.dom.parse(httpGet(url))
+        if not lime.dom.select(doc, ".list-group") then error("未找到搜索结果列表") end
+        local current = tonumber(selectText(doc, ".layui-laypage-curr em:last-child"))
+        if current and current < page then return { records = {} } end
+        records = parseSearchResources(doc, url)
+    else
+        local category = CATEGORIES[1].field
+        for _, option in ipairs(CATEGORIES) do
+            if option.field == tostring(filters.category) then
+                category = option.field
+                break
+            end
         end
+        local isRank = not tonumber(category)
+        if not isRank then
+            url = origin .. "/all/id/" .. category .. "/order/hits+desc.html?page=" .. page
+        else
+            if page > 1 then return { records = {} } end
+            url = origin .. "/other/rank_hits/order/" .. category .. ".html"
+        end
+        doc = lime.dom.parse(httpGet(url, isRank))
+        if not lime.dom.select(doc, ".rec_rullist") then error("未找到排行列表") end
+        local current = tonumber(selectText(doc, ".pagination li.active span"))
+        if current and current < page then return { records = {} } end
+        records = parseRankResources(doc, url)
     end
-    return result
+    -- 资源身份不随所选镜像变化。
+    for _, record in ipairs(records) do record.id = SITES[1] .. resourcePath(record.url) end
+    return { records = records }
 end
 
-local function search(query)
-    query = query or {}
-    local keyword = query.keyword or ""
-    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.cursor) or 1
-        local records, html = searchKeyword(keyword, page)
-        return pageResult(records, html, page)
+local function settings()
+    local options = {}
+    for _, site in ipairs(SITES) do options[#options + 1] = { value = site, label = site:sub(9) } end
+    return {{
+        key = "site", label = "书源线路", type = "dialog", icon = "Settings",
+        fields = {{ field = "origin", label = "站点域名", type = "select", required = true, default = siteOrigin(), options = options }},
+        actions = {{ field = "save", label = "保存", action = "saveSite" }},
+    }}
+end
+
+local function saveSite(request)
+    if request.action == "saveSite" then
+        for _, site in ipairs(SITES) do
+            if request.data.origin == site then
+                lime.storage.set(SITE_KEY, site)
+                return { ok = true, message = "线路已保存" }
+            end
+        end
     end
-    local selected = CATEGORIES[1]
-    local wanted = query.filters.category
-    for _, c in ipairs(CATEGORIES) do
-        if tostring(c.field) == tostring(wanted) then selected = c end
-    end
-    local page = tonumber(query.cursor) or 1
-    local html, finalUrl = fetchUrl(selected.url, keyword, page)
-    return pageResult(parseRankResources(html, finalUrl), html, page)
+    error("无效的线路设置")
 end
 
 local function test(request)
+    confirmSite(siteOrigin()) -- 认证需在检测项的 pcall 外触发。
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
         local started = lime.time.unix_ms()
@@ -415,47 +412,24 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value), durationMs = lime.time.unix_ms() - started }
         return ok and value or nil
     end
-    records = run("search", function() local value = search({ keyword = "美母为妻", filters = {} }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
+    records = run("search", function() local value = search({ keyword = "地铁", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    if records then info = run("resourceInfo", function() return resourceInfo({ resource = records[1] }) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
+    if info then catalog = run("chapterList", function() return chapterList({ resource = info }) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
     if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
     run("explore", explore)
     return results
 end
 
--- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。
-local function resourceRecord(record)
-    record.id = record.url
-
-    return record
-end
-
-local function searchResources(query)
-    local page = search(query)
-    for _, record in ipairs(page.records) do resourceRecord(record) end
-    return page
-end
-
-local function describeResource(request)
-    local record = resourceRecord(resourceInfo(request.resource.url))
-    record.id = request.resource.id
-    return record
-end
-
-local function listResourceChapters(request)
-    return chapterList(request.resource.url, { routeId = request.routeId })
-end
-
 return {
     protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.1", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = "https://xn--vcsx64d.alicesw12.xyz" },
-    requires = { "crypto", "dom", "http", "log", "time" },
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.5", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
+    requires = { "browser", "crypto", "dom", "http", "log", "storage", "time" },
 
     capabilities = { resource = {
         content = "novel",
-        search = searchResources, resourceInfo = describeResource,
-        chapterList = listResourceChapters, chapterContent = chapterContent,
+        search = search, resourceInfo = resourceInfo,
+        chapterList = chapterList, chapterContent = chapterContent,
         explore = explore,
     } },
-    hooks = { test = test },
+    hooks = { test = test, settings = { list = settings, action = saveSite } },
 }

@@ -23,10 +23,10 @@ local function postJson(payload)
     headers["Content-Type"] = "application/json"
     local response = lime.http.post(API, lime.json.encode(payload), headers)
     if response.status < 200 or response.status >= 300 then
-        error("QQ 音乐请求失败: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "QQ 音乐请求失败: HTTP " .. tostring(response.status) })
     end
-    local data, decodeErr = lime.json.decode(response.body)
-    if not data then error("QQ 音乐响应解析失败: " .. tostring(decodeErr)) end
+    local data = lime.json.decode(response.body)
+    if type(data) ~= "table" then error({ code = 2007, message = "QQ 音乐响应格式无效" }) end
     return data
 end
 local function songMidFromUrl(url) return tostring(url or ""):match("/songDetail/([%w%-_]+)") end
@@ -55,8 +55,11 @@ local function search(query)
     local data = postJson({ req_1 = { method = "DoSearchForQQMusicDesktop", module = "music.search.SearchCgiService", param = { num_per_page = PAGE_SIZE, page_num = current, query = tostring(query.keyword or ""), search_type = 0 } } })
     local searchResponse = data.req_1
     local list = searchResponse and ((searchResponse.data or {}).body or {}).song
-    if type(list) ~= "table" or (searchResponse.code and searchResponse.code ~= 0) then
-        error("QQ 音乐搜索响应无效")
+    if (data.code and data.code ~= 0) or (searchResponse and searchResponse.code and searchResponse.code ~= 0) then
+        error({ code = 2001, message = "QQ 音乐拒绝搜索请求" })
+    end
+    if type(list) ~= "table" then
+        error({ code = 2007, message = "QQ 音乐搜索响应无效" })
     end
     local total = tonumber(list.totalnum)
     if not total or total < 0 or total ~= math.floor(total) then total = nil end
@@ -88,22 +91,29 @@ end
 
 local function resolveUrl(mid, quality)
     local response = lime.http.get(PLAY_API .. mid .. "/" .. quality, { ["X-Request-Key"] = "share-v3" })
-    if response.status < 200 or response.status >= 300 then return nil end
-    local data = lime.json.decode(response.body); local url = data and trim(data.url) or ""
+    if response.status < 200 or response.status >= 300 then
+        error({ code = 2006, message = "QQ 音乐播放地址请求失败：HTTP " .. tostring(response.status) })
+    end
+    local data = lime.json.decode(response.body)
+    if type(data) ~= "table" or (data.url ~= nil and type(data.url) ~= "string") then
+        error({ code = 2007, message = "QQ 音乐播放地址响应格式无效" })
+    end
+    local url = trim(data.url)
     return url ~= "" and url or nil
 end
 
 local function decodeBase64(value)
-    if type(value) ~= "string" or value == "" then return "" end
-    -- QQ 音乐 lyric/trans 字段返回的 base64 经常不带 "=" 填充。
-    -- lime.crypto.base64Decode 用 STANDARD 解码严格校验填充,缺失时整体失败。
-    -- 这里补齐填充再做一次重试,失败再返回空串。
+    if value == nil or value == "" then return "" end
+    if type(value) ~= "string" then
+        error({ code = 2007, message = "QQ 音乐歌词字段格式无效" })
+    end
+    -- QQ 音乐的 Base64 经常省略等号，补齐后再尝试解码。
     local raw = lime.crypto.base64Decode(value)
     if not raw then
         local pad = (4 - #value % 4) % 4
         if pad > 0 then raw = lime.crypto.base64Decode(value .. string.rep("=", pad)) end
     end
-    if not raw then return "" end
+    if not raw then error({ code = 2007, message = "QQ 音乐歌词编码无效" }) end
     return raw
 end
 
@@ -185,28 +195,29 @@ local function fetchLrc(mid)
     local headers = {}
     for key, value in pairs(LYRIC_HEADERS) do headers[key] = value end
     local response = lime.http.post(LYRIC_API, lime.json.encode(payload), headers)
-    lime.log.info("body: " .. tostring(lime.json.encode(response.body)))
-    lime.log.info("mid: " .. mid)
-    lime.log.info("status: " .. tostring(response.status))
-    if response.status < 200 or response.status >= 300 then return nil end
+    if response.status < 200 or response.status >= 300 then
+        error({ code = 2006, message = "QQ 音乐歌词请求失败：HTTP " .. tostring(response.status) })
+    end
     local data = lime.json.decode(response.body)
-    lime.log.info("decode type=" .. type(data))
-    if type(data) ~= "table" then return nil end
-
-    lime.log.info("lyricInfo" .. lime.json.encode(lyricInfo))
-    local lyricInfo = ((data.songinfo or {}).data or {}) or {}
-    lime.log.info("lyricInfo" .. lime.json.encode(lyricInfo))
+    local songinfo = type(data) == "table" and data.songinfo
+    if type(songinfo) ~= "table" then
+        error({ code = 2007, message = "QQ 音乐歌词响应格式无效" })
+    end
+    if (data.code and data.code ~= 0) or (songinfo.code and songinfo.code ~= 0) then
+        error({ code = 2001, message = "QQ 音乐拒绝返回歌词" })
+    end
+    local lyricInfo = songinfo.data
+    if type(lyricInfo) ~= "table" then
+        error({ code = 2007, message = "QQ 音乐歌词响应缺少数据" })
+    end
     local rawLyricField = lyricInfo.lyric or ""
 
-    lime.log.info("lyricInfo lyric_field_len=" .. #rawLyricField .. " preview=" .. tostring(rawLyricField:sub(1, 40)))
     local lyricRaw = decodeBase64(rawLyricField)
     local transRaw = decodeBase64(lyricInfo.trans or "")
-    lime.log.info("after decode: lyricRaw_len=" .. #lyricRaw .. " isPlaceholder=" .. tostring(isPlaceholder(lyricRaw)))
     if isPlaceholder(lyricRaw) and isPlaceholder(transRaw) then return nil end
     local result = {}
     if not isPlaceholder(lyricRaw) then result.lyric = parseLrc(lyricRaw) end
     if not isPlaceholder(transRaw) then result.trans = parseLrc(transRaw) end
-    lime.log.info("parsed: lyric=" .. (result.lyric and #result.lyric or "nil") .. " trans=" .. (result.trans and #result.trans or "nil"))
     if (result.lyric == nil or #result.lyric == 0) and (result.trans == nil or #result.trans == 0) then
         return nil
     end
@@ -222,7 +233,6 @@ local function chapterContent(request)
     if #sources == 0 then error("未取得可播放地址") end
 
     -- 歌词轨道:有 lyric 时至少 1 条 default=true,有 trans 时追加 default=false。
-    -- fetchLrc 不做 pcall,任何错误直接抛到 host(Rust)走统一错误处理。
     local subtitles = {}
     local lrcData = fetchLrc(mid)
     if lrcData then
@@ -241,7 +251,6 @@ local function chapterContent(request)
         end
     end
 
-    lime.log.info("subtitles" .. lime.json.encode(subtitles))
     return {
         blocks = {
             {
@@ -257,11 +266,16 @@ end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "周杰伦", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     return results
 end
 

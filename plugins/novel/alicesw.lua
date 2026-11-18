@@ -114,11 +114,11 @@ local function httpGet(url, retryRank)
     if retryRank and response.status == 500 then
         response = lime.http.get(url)
         if response.status == 500 then
-            error("排行榜返回 HTTP 500，请稍后重试，或在插件设置中手动切换线路 (" .. url .. ")")
+            error({ code = 2006, message = "排行榜返回 HTTP 500，请稍后重试，或在插件设置中手动切换线路" })
         end
     end
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.get: HTTP " .. tostring(response.status) .. " (" .. url .. ")")
+        error({ code = 2006, message = "lime.http.get: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
@@ -135,10 +135,7 @@ local function parseTime(value, fmt)
     local s = trim(value)
     if s == "" then return 0 end
     fmt = fmt or "更新时间：YYYY-MM-dd HH:mm"
-    local ts, err = lime.time.parse_offset(fmt, s, TZ_OFFSET)
-    if ts then return ts end
-    lime.log.warn("time parse failed: " .. s .. " " .. tostring(err))
-    return 0
+    return lime.time.parse_offset(fmt, s, TZ_OFFSET) or 0
 end
 
 local function tocUrlFromBookUrl(url)
@@ -347,8 +344,8 @@ local function search(query)
     local origin = siteOrigin()
     local url, doc, records
     if keyword ~= "" and next(filters) == nil then
-        local encoded, err = lime.crypto.urlEncode(keyword)
-        if not encoded then error("搜索词编码失败：" .. tostring(err)) end
+        local encoded = lime.crypto.urlEncode(keyword)
+        if not encoded then error("搜索词编码失败") end
         url = origin .. "/search.html?q=" .. encoded .. "&f=_all&p=" .. page
         doc = lime.dom.parse(httpGet(url))
         if not lime.dom.select(doc, ".list-group") then error("未找到搜索结果列表") end
@@ -404,18 +401,19 @@ local function saveSite(request)
 end
 
 local function test(request)
-    confirmSite(siteOrigin()) -- 认证需在检测项的 pcall 外触发。
+    confirmSite(siteOrigin())
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
         local started = lime.time.unix_ms()
-        local ok, value = pcall(fn)
-        results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value), durationMs = lime.time.unix_ms() - started }
-        return ok and value or nil
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用", durationMs = lime.time.unix_ms() - started }
+        return value
     end
     records = run("search", function() local value = search({ keyword = "地铁", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo({ resource = records[1] }) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList({ resource = info }) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo({ resource = records[1] }) end)
+    catalog = run("chapterList", function() return chapterList({ resource = info }) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end

@@ -76,9 +76,10 @@ local function httpGet(path)
         local replay = openBrowserChallenge(target)
         lime.storage.remove(PENDING_BROWSER_KEY)
         if not replay or replay.status < 200 or replay.status >= 300 then
-            return nil, "browser request failed: HTTP " .. tostring(replay and replay.status or 0), replay and replay.status
+            return nil, { code = 2006, message = "JapaneseASMR 浏览器请求失败：HTTP " .. tostring(replay and replay.status or 0) }
         end
-        return replay.body, nil, replay.status
+        if not replay.body or replay.body == "" then return nil, { code = 2007, message = "JapaneseASMR 响应正文为空" } end
+        return replay.body
     end
 
     local response = lime.http.get(target, headers)
@@ -88,10 +89,10 @@ local function httpGet(path)
         lime.storage.remove(PENDING_BROWSER_KEY)
     end
     if not response or response.status < 200 or response.status >= 300 then
-        return nil, "HTTP " .. tostring(response and response.status or 0), response and response.status
+        return nil, { code = 2006, message = "JapaneseASMR 请求失败：HTTP " .. tostring(response and response.status or 0) }
     end
-    if not response.body or response.body == "" then return nil, "empty body", response.status end
-    return response.body, nil, response.status
+    if not response.body or response.body == "" then return nil, { code = 2007, message = "JapaneseASMR 响应正文为空" } end
+    return response.body
 end
 
 -- "12分07秒" / "11分19秒" 等日文时长字符串 → 秒
@@ -413,7 +414,7 @@ local function explore()
 
     -- 标签页可能被 Cloudflare 单独拒绝;标签筛选是可选增强,不阻断整个发现入口。
     if not html then
-        lime.log.warn("explore: tags unavailable: " .. tostring(err))
+        lime.log.warn("explore: tags unavailable: " .. err.message)
         return filters
     end
     local doc = lime.dom.parse(html)
@@ -448,7 +449,6 @@ local function search(query)
 
     local path = buildExplorePath(keyword, filters, page)
     local html, err = httpGet(path)
-    lime.log.info("search: path=" .. path .. " err=" .. tostring(err))
     if not html then error(err) end
     local doc = lime.dom.parse(html)
     local out = {}
@@ -465,7 +465,7 @@ end
 local function resourceInfo(url)
     if not url or url == "" then error("无效的 URL") end
     local data, err = fetchProductData(url)
-    if not data then error("fetch post failed: " .. tostring(err)) end
+    if not data then error(err) end
 
     return {
         name = data.title,
@@ -489,7 +489,7 @@ end
 local function chapterList(resourceUrl)
     if not resourceUrl or resourceUrl == "" then error("无效的 URL") end
     local data, err = fetchProductData(resourceUrl)
-    if not data then error("chapterList: fetch failed: " .. tostring(err)) end
+    if not data then error(err) end
 
     -- 兜底:整片 = 1 章
     local starts = data.starts
@@ -518,9 +518,9 @@ local function chapterContent(request)
     local chapterIdx = request.chapter.index or 0
 
     local data, err = fetchProductData(resourceUrl)
-    if not data then error("chapterContent: fetch failed: " .. tostring(err)) end
+    if not data then error(err) end
     if not data.m3u8 or data.m3u8 == "" then
-        error("chapterContent: no audio source found")
+        error({ code = 2007, message = "JapaneseASMR 没有返回可播放的音频源" })
     end
 
     local starts = #data.starts > 0 and data.starts or { 0 }
@@ -569,7 +569,7 @@ end
 local function legacyTest(content)
     local html, err = httpGet("/tags/")
     if not html then
-        return { ok = false, message = "无法连接 " .. BASE .. ": " .. tostring(err or "network") }
+        return { ok = false, message = "无法连接 " .. BASE .. ": " .. err.message }
     end
     local doc = lime.dom.parse(html)
     local groups = parseTagGroups(doc)
@@ -581,7 +581,7 @@ local function legacyTest(content)
     local randomEnd = search({ keyword = "", page = 2, filters = { sort = "random" } })
     local productHtml, productErr = httpGet("/148155/")
     if not productHtml then
-        return { ok = false, message = "详情页标签测试失败: " .. tostring(productErr or "network") }
+        return { ok = false, message = "详情页标签测试失败: " .. productErr.message }
     end
     local productDoc = lime.dom.parse(productHtml)
     local productTags = parseProductTags(productDoc)
@@ -643,11 +643,16 @@ end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "asmr", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end

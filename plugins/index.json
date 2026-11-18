@@ -7,42 +7,42 @@
     {
       "name": "小秋音乐",
       "sourceUrl": "http://127.0.0.1:4173/plugins/audio/xiaoqiu.lua",
-      "hash": "3fd5be93c2a3c2dac4296ea534133523180f99e8d8bf88d943f4e56bc3a67766"
+      "hash": "2fb586343afa68bd59de83e132a6a2667eaa79b609e39c49a13051bafc5eb169"
     },
     {
       "name": "japaneseasmr",
       "sourceUrl": "http://127.0.0.1:4173/plugins/audio/japaneseasmr.lua",
-      "hash": "0eb27faef01219e876e0bbb08abfbec11699e5d347d9ea118a72fd042f0867d6"
+      "hash": "c2b73c323bf8fe7f0389d0f0b94ff81cab135e0195af3c6263221f5827724ea7"
     },
     {
       "name": "Picacg",
       "sourceUrl": "http://127.0.0.1:4173/plugins/comic/picacg.lua",
-      "hash": "e7487c0c1e30d7e498991ce35ff67baf6c4e28811aea14c3bb013b6e5d5211b6"
+      "hash": "6450ab8d1397d0ef94207d191dce276af243c81cc9014e5dbe8d68e47c032cb0"
     },
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "http://127.0.0.1:4173/plugins/novel/alicesw.lua",
-      "hash": "d8b7e097df0c368f56b56c2ec018b5e953b513575d907b6996128c9ccf40278b"
+      "hash": "a04039691b8bc05d79bd6fdf91e817d52a7e9f427a86676bd2af7e10f0d6f48e"
     },
     {
       "name": "得奇小说网",
       "sourceUrl": "http://127.0.0.1:4173/plugins/novel/deqixs.lua",
-      "hash": "d6001e8d2a69be9cffe1609be4406911d99c39d81e98ebc86f0a77494feee63d"
+      "hash": "5aed0d0f60e550d875caa44982eefb93e795796487dea67306943b85b0aa75dc"
     },
     {
       "name": "奇书网",
       "sourceUrl": "http://127.0.0.1:4173/plugins/novel/qishuxia.lua",
-      "hash": "32489080a7bf22312e07d5cefd9a7bfc447a1ebec0819a4f9d50912bbfb11a86"
+      "hash": "830ba047229da34c582a42c59bdf313c22c25ae2a3fa26a3ea5e5648935bd9ae"
     },
     {
       "name": "布布影视",
       "sourceUrl": "http://127.0.0.1:4173/plugins/video/bbys.lua",
-      "hash": "2ba396f902751b5481c5356713041058f271b037c3121f7fd6102a49dd9b0e01"
+      "hash": "e5bde923056e83f011a474b11b1404d73da9523e3d9c294391c1d10b4791da32"
     },
     {
       "name": "Jable TV",
       "sourceUrl": "http://127.0.0.1:4173/plugins/video/jable.lua",
-      "hash": "1f519a2df28ac236521c60ae77e3d352a870698f235456425e0dffdcaf6b813c"
+      "hash": "c0955968f8b0462d852136079daf7cb795ca5a727d8f2b83defaf69412ea7c0a"
     }
   ]
 }

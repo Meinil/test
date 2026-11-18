@@ -140,7 +140,7 @@ local function httpGet(url, headers, allowNotFound)
     end
     if allowNotFound and response.status == 404 then return nil end
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.get: HTTP " .. tostring(response.status) .. " (" .. url .. ")")
+        error({ code = 2006, message = "lime.http.get: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
@@ -149,7 +149,7 @@ end
 local function httpPost(url, body, headers)
     local response = lime.http.post(url, body, headers)
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.post: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "lime.http.post: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
@@ -284,8 +284,6 @@ local function parseBookInfoHtml(html)
         local ts, err = lime.time.parse_offset("YYYY-MM-dd HH:mm", updateTimeRaw, TZ_OFFSET)
         if ts then
             result.latestUpdateTime = ts
-        else
-            lime.log.warn("qishuxia update_time parse failed: " .. updateTimeRaw .. " " .. tostring(err))
         end
     end
 
@@ -363,7 +361,7 @@ local function warmSite()
         ["Sec-Fetch-Site"]           = "none",
         ["Sec-Fetch-User"]           = "?1",
     }
-    pcall(lime.http.get, BASE .. "/", headers)
+    httpGet(BASE .. "/", headers)
 end
 
 -- =====================================================================
@@ -371,14 +369,14 @@ end
 -- =====================================================================
 
 local function searchKeyword(keyword, page)
-    lime.log.info("search: keyword=" .. tostring(keyword))
+
     if not keyword or keyword == "" then return {} end
 
     warmSite()
 
     -- 预热搜索页,触发服务端写入 jieqiVisitTime=jieqiArticlesearchTime=...
     -- warmSite 只 warm 了主页,这里补一次 search.php 以让 jieqi CMS 反爬 cookie 入 jar
-    pcall(lime.http.get, BASE .. "/modules/article/search.php", {
+    httpGet(BASE .. "/modules/article/search.php", {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
         ["Accept"]                   = BROWSER_HEADERS["Accept"],
         ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
@@ -412,7 +410,7 @@ local function searchKeyword(keyword, page)
     -- 服务端 search 接口用 GBK 编码 keyword(form 表单提交到 GBK 网站)
     local encodedKeyword, encErr = lime.crypto.urlEncodeWithCharset(tostring(keyword), "gbk")
     if not encodedKeyword then
-        error("GBK 编码失败: " .. tostring(encErr))
+        error("搜索词 GBK 编码失败")
     end
 
     local body = "searchkey=" .. encodedKeyword
@@ -424,7 +422,7 @@ local function searchKeyword(keyword, page)
 
     local doc = lime.dom.parse(html)
     local books = parseBooks(doc, "", true)
-    lime.log.info("search: keyword=" .. tostring(keyword) .. " count=" .. #books)
+
     return books, html
 end
 
@@ -433,7 +431,7 @@ end
 -- =====================================================================
 
 local function resourceInfo(bookUrl)
-    lime.log.info("resourceInfo: " .. tostring(bookUrl))
+
     warmSite()
     local headers = {
         ["User-Agent"]             = BROWSER_HEADERS["User-Agent"],
@@ -477,7 +475,7 @@ end
 -- =====================================================================
 
 local function chapterList(bookUrl)
-    lime.log.info("chapterList: " .. tostring(bookUrl))
+
     warmSite()
     local headers = {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
@@ -538,7 +536,7 @@ end
 
 local function chapterContent(request)
     local chapterUrl = request.chapter.url
-    lime.log.info("chapterContent: " .. tostring(chapterUrl))
+
     warmSite()
     local headers = {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
@@ -590,7 +588,7 @@ local function chapterContent(request)
             text = para,
         }
     end
-    lime.log.info("chapterContent: url=" .. tostring(chapterUrl) .. " blocks=" .. #blocks)
+
     return { blocks = blocks }
 end
 
@@ -641,7 +639,6 @@ local function search(query)
     local firstUrl = BASE .. "/" .. sortId .. "/"
     local url = page > 1 and (firstUrl .. page .. ".html") or firstUrl
 
-    lime.log.info("search: url=" .. url)
 
     local headers = {
         ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
@@ -667,7 +664,7 @@ local function search(query)
         if lime.dom.select(first, pager) and not lime.dom.select(first, pager .. " a[href]") then
             return { records = {} }
         end
-        error("lime.http.get: HTTP 404 (" .. url .. ")")
+        error({ code = 2006, message = "奇书网请求失败：HTTP 404" })
     end
 
     local doc = lime.dom.parse(html)
@@ -680,11 +677,16 @@ end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "小说", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end

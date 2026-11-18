@@ -117,7 +117,7 @@ local function getPage(url)
         local replay = openBrowserChallenge(url)
         lime.storage.remove(PENDING_BROWSER_KEY)
         if replay.status < 200 or replay.status >= 300 then
-            error("Jable 浏览器请求失败: HTTP " .. tostring(replay.status))
+            error({ code = 2006, message = "Jable 浏览器请求失败: HTTP " .. tostring(replay.status) })
         end
         return replay.body
     end
@@ -129,7 +129,7 @@ local function getPage(url)
         lime.storage.remove(PENDING_BROWSER_KEY)
     end
     if response.status < 200 or response.status >= 300 then
-        error("Jable 请求失败: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "Jable 请求失败: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
@@ -353,7 +353,7 @@ local function chapterContent(request)
 
     local html = getPage(url)
     local m3u8Url = extractM3u8Url(html)
-    if not m3u8Url then error("未找到视频源，页面可能受 Cloudflare 保护或结构已变化") end
+    if not m3u8Url then error({ code = 2007, message = "Jable 未找到可播放的视频源" }) end
 
     return {
         blocks = {
@@ -492,29 +492,30 @@ local function legacyTest(content)
         return { ok = true, message = "Jable 页面解析通过" }
     end
 
-    local ok, result = pcall(function()
-        local records = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records
-        if #records == 0 then error("搜索无结果") end
-        local info = resourceInfo(records[1].url)
-        if not info.name or info.name == "" then error("资源详情名称获取失败") end
-        local catalog = chapterList(info.url)
-        if not catalog.chapters or #catalog.chapters == 0 then error("章节目录获取失败") end
-        local contentResult = chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] })
-        if not contentResult.blocks or not contentResult.blocks[1] then error("视频块为空") end
-        if not contentResult.blocks[1].sources or not contentResult.blocks[1].sources[1].url then error("视频源为空") end
-        return { ok = true, message = "Jable 可用，搜索到 " .. tostring(#records) .. " 个结果" }
-    end)
-    if ok then return result end
-    error(tostring(result))
+    local records = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records
+    if #records == 0 then error("搜索无结果") end
+    local info = resourceInfo(records[1].url)
+    if not info.name or info.name == "" then error("资源详情名称获取失败") end
+    local catalog = chapterList(info.url)
+    if not catalog.chapters or #catalog.chapters == 0 then error("章节目录获取失败") end
+    local contentResult = chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] })
+    if not contentResult.blocks or not contentResult.blocks[1] then error("视频块为空") end
+    if not contentResult.blocks[1].sources or not contentResult.blocks[1].sources[1].url then error("视频源为空") end
+    return { ok = true, message = "Jable 可用，搜索到 " .. tostring(#records) .. " 个结果" }
 end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", exploreFilters)
     return results
 end

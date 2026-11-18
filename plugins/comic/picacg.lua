@@ -75,8 +75,8 @@ local function buildHeaders(method, path, token, form)
     local t = tostring(lime.time.unix())
     local upperMethod = string.upper(method)
     local signInput = string.lower(path .. t .. n .. upperMethod .. API_KEY)
-    local signature, signErr = lime.crypto.hmacSha256(SIGN_KEY, signInput)
-    if not signature then return nil, "Picacg 签名失败: " .. tostring(signErr) end
+    local signature = lime.crypto.hmacSha256(SIGN_KEY, signInput)
+    if not signature then return nil, "Picacg 签名失败" end
 
     return {
         ["api-key"] = API_KEY,
@@ -99,21 +99,13 @@ end
 
 --- JSON 解码包装。
 local function decodeJson(body)
-    local data, err = lime.json.decode(body)
-    if not data then return nil, "Picacg JSON 解析失败: " .. tostring(err) end
-    return data, nil
-end
-
---- 登录响应日志脱敏,避免完整 token 落到日志。
-local function maskLoginResponse(s)
-    if not s then return "" end
-    return tostring(s):gsub('("token"%s*:%s*")[^"]+', '%1***')
+    return lime.json.decode(body)
 end
 
 --- JSON 编码包装。
 local function encodeJson(value)
-    local body, err = lime.json.encode(value)
-    if not body then return nil, "Picacg JSON 编码失败: " .. tostring(err) end
+    local body = lime.json.encode(value)
+    if not body then return nil, "Picacg JSON 编码失败" end
     return body, nil
 end
 
@@ -144,72 +136,50 @@ local function sendRequest(method, url, headers, payload)
     return response, nil
 end
 
-local function httpBodyMessage(body)
-    if not body or body == "" then return nil end
-    local json = decodeJson(body)
-    if type(json) ~= "table" then return nil end
-    local message = json.message or ((json.data or {}).message)
-    message = trim(message)
-    if message == "" then return nil end
-    return message
+local function requireLogin()
+    local token = lime.storage.get("token")
+    if not token or token == "" then
+        error({ code = 2002, message = "请在插件设置中登录 Picacg" })
+    end
+    return token
 end
 
---- 执行 Picacg 请求并返回完整 envelope `{code, message, data}`。
----
---- 与 requestJson 的区别:返回 envelope 全字段而不是只返 data。
---- 注册 / 签到 / 修改密码等场景需要读 envelope.code 判断业务错误
---- (Picacg 服务端把业务错误用 HTTP 200 + envelope{code:非 200,message:...} 表示)。
+--- 校验 HTTP 状态与站点业务信封。公开文案不读取上游 message。
 local function requestEnvelope(method, path, payload, token, form)
     local url = baseUrl(form and form.baseUrl) .. "/" .. path
-    local authToken = token
-    if authToken == nil then authToken = lime.storage.get("token") end
+    local authToken = token == nil and requireLogin() or token
     local headers, headerErr = buildHeaders(method, path, authToken, form)
     if not headers then return nil, headerErr end
     local response, requestError = sendRequest(method, url, headers, payload)
     if requestError then return nil, requestError end
-    local body = response.body
-    if path == "auth/sign-in" then
-        if body then
-            lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
-        end
+    if response.status == 401 and authToken ~= "" then
+        error({ code = 2002, message = "Picacg 登录已失效，请重新登录" })
     end
     if response.status < 200 or response.status >= 300 then
-        local detail = httpBodyMessage(body) or ("HTTP " .. tostring(response.status))
-        return nil, "Picacg 请求失败(" .. path .. "): " .. detail
+        error({ code = 2006, message = "Picacg 请求失败：HTTP " .. tostring(response.status) })
     end
-    if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
-    local json, decodeErr = decodeJson(body)
-    if not json then return nil, decodeErr end
-    local code = tonumber(json.code)
-    if code ~= nil and code ~= 200 then
-        return nil, json.message or ("Picacg 业务错误 code=" .. tostring(code))
+    local json = decodeJson(response.body or "")
+    local code = type(json) == "table" and tonumber(json.code)
+    if not code then
+        error({ code = 2007, message = "Picacg 响应缺少业务状态" })
     end
-    return json, nil
+    if code == 401 and authToken ~= "" then
+        error({ code = 2002, message = "Picacg 登录已失效，请重新登录" })
+    end
+    if code ~= 200 then
+        error({ code = 2001, message = "Picacg 拒绝请求，业务状态码：" .. tostring(code) })
+    end
+    return json
 end
 
---- 执行 Picacg 请求并返回 data 字段。
+--- 返回已验证信封中的业务数据。
 local function requestJson(method, path, payload, token, form)
-    local url = baseUrl(form and form.baseUrl) .. "/" .. path
-    local authToken = token
-    if authToken == nil then authToken = lime.storage.get("token") end
-    local headers, headerErr = buildHeaders(method, path, authToken, form)
-    if not headers then return nil, headerErr end
-    local response, requestError = sendRequest(method, url, headers, payload)
-    if requestError then return nil, requestError end
-    local body = response.body
-    if path == "auth/sign-in" then
-        if body then
-            lime.log.info("[picacg] login response: " .. maskLoginResponse(body))
-        end
+    local json, err = requestEnvelope(method, path, payload, token, form)
+    if not json then return nil, err end
+    if type(json.data) ~= "table" then
+        error({ code = 2007, message = "Picacg 响应缺少业务数据" })
     end
-    if response.status < 200 or response.status >= 300 then
-        local detail = httpBodyMessage(body) or ("HTTP " .. tostring(response.status))
-        return nil, "Picacg 请求失败(" .. path .. "): " .. detail
-    end
-    if not body then return nil, "Picacg 请求失败(" .. path .. "): empty response" end
-    local json, decodeErr = decodeJson(body)
-    if not json then return nil, decodeErr end
-    return json.data or {}, nil
+    return json.data
 end
 
 --- Picacg 图片对象转远端图片 URL。
@@ -262,7 +232,6 @@ end
 
 --- 登录并保存 token。
 local function login(username, password, form)
-    lime.log.info(encodeJson({ username = username, password = password }))
     local data, err = requestJson("POST", "auth/sign-in", {
         email = username,
         password = password,
@@ -357,12 +326,11 @@ end
 
 --- 每日签到。
 ---
---- POST users/punch-in(需 token,空 body)。server message 直接回传。
+--- POST users/punch-in(需 token,空 body)，成功时使用固定文案。
 local function punchInAccount(form)
     local envelope, reqErr = requestEnvelope("POST", "users/punch-in", {}, nil, form)
     if not envelope then return nil, reqErr end
-    local message = (envelope.data and envelope.data.message) or envelope.message or "打卡成功"
-    return true, message
+    return true, "打卡成功"
 end
 
 --- 搜索漫画。
@@ -383,9 +351,7 @@ end
 
 --- 统一普通搜索与发现页搜索。
 local function search(query)
-    if not lime.storage.get("token") then
-        error("请先登录")
-    end
+    requireLogin()
     query = query or {}
     local keyword = query.keyword or ""
     local filters = query.filters
@@ -445,9 +411,7 @@ end
 local function resourceInfo(url)
     local id = tostring(url or "")
     if id == "" then error("漫画 ID 为空") end
-    if not lime.storage.get("token") then
-        error("请先登录")
-    end
+    requireLogin()
     local data, err = requestJson("GET", "comics/" .. id)
     if not data then error(err) end
     local comic = data.comic or {}
@@ -480,9 +444,7 @@ end
 local function chapterList(url)
     local id = tostring(url or "")
     if id == "" then error("漫画 ID 为空") end
-    if not lime.storage.get("token") then
-        error("请先登录")
-    end
+    requireLogin()
     local all = {}
     local page = 1
     while true do
@@ -578,35 +540,25 @@ local function legacyTest(content)
         return { ok = true, message = "Picacg 章节路由映射通过" }
     end
     -- 验证空白消息不会遮蔽 HTTP 状态回退，同时保留有效服务端消息。
-    if content == "http-error-message" then
-        if httpBodyMessage('{"message":"   "}') ~= nil then
-            error("Picacg 空白错误消息测试失败")
-        end
-        if httpBodyMessage('{"data":{"message":"denied"}}') ~= "denied" then
-            error("Picacg 有效错误消息测试失败")
-        end
-        return { ok = true, message = "Picacg HTTP 错误消息规范化通过" }
-    end
-    if not lime.storage.get("token") then
-        error("未登录: 请在插件更多功能中先登录 Picacg")
-    end
-    local ok, result = pcall(function()
-        local data, err = requestJson("GET", "comics/random")
-        if not data then error(err) end
-        local count = data.comics and #data.comics or 0
-        return { ok = true, message = "Picacg 可用,随机漫画 " .. count .. " 本" }
-    end)
-    if ok then return result end
-    error(tostring(result))
+    requireLogin()
+    local data, err = requestJson("GET", "comics/random")
+    if not data then error(err) end
+    local count = data.comics and #data.comics or 0
+    return { ok = true, message = "Picacg 可用,随机漫画 " .. count .. " 本" }
 end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "comic", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end
@@ -759,14 +711,14 @@ local function settingsAction(action, data)
         return { ok = true, message = "注册成功,请用新账号登录" }
     elseif action == "changePasswordBtn" then
         if not lime.storage.get("token") then
-            error("未登录: 请先登录 Picacg")
+            requireLogin()
         end
         local _, err = changeAccountPassword(data.oldPassword, data.newPassword, data)
         if err then error(err) end
         return { ok = true, message = "密码已修改" }
     elseif action == "punchInBtn" then
         if not lime.storage.get("token") then
-            error("未登录: 请先登录 Picacg")
+            requireLogin()
         end
         local _, msg = punchInAccount(data)
         if not msg then error("打卡失败") end
@@ -776,7 +728,7 @@ local function settingsAction(action, data)
         lime.storage.remove("account")
         return { ok = true, message = "已登出 Picacg" }
     end
-    error("settingsAction: unknown action '" .. tostring(action) .. "'")
+    error("Picacg 不支持该设置操作")
 end
 
 -- 资源身份由来源明确提供，此来源使用规范 URL 作为稳定 id。

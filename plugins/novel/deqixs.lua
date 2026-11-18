@@ -115,7 +115,7 @@ end
 local function httpGet(url, headers)
     local response = lime.http.get(url, headers)
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.get: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "lime.http.get: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
@@ -124,19 +124,11 @@ end
 local function httpPost(url, body, headers)
     local response = lime.http.post(url, body, headers)
     if response.status < 200 or response.status >= 300 then
-        error("lime.http.post: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "lime.http.post: HTTP " .. tostring(response.status) })
     end
     return response.body
 end
 
---- JSON 解码,失败返 nil + err(JSON 解析失败用 pcall 兜)
-local function safeJsonDecode(s)
-    if not s or s == "" then return nil, "empty response" end
-    local ok, data = pcall(lime.json.decode, s)
-    if not ok then return nil, tostring(data) end
-    if type(data) ~= "table" then return nil, "json decode result is not table" end
-    return data, nil
-end
 
 -- =====================================================================
 -- 工具:章节正文 HTML 清理
@@ -246,7 +238,7 @@ end
 -- 普通搜索实现
 -- =====================================================================
 local function searchKeyword(keyword)
-    lime.log.info("searching: " .. tostring(keyword))
+
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
         ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
@@ -333,7 +325,7 @@ end
 -- 资源详情 resourceInfo(bookUrl)
 -- =====================================================================
 local function resourceInfo(bookUrl)
-    lime.log.info("bookInfo: " .. tostring(bookUrl))
+
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
         ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
@@ -376,13 +368,11 @@ local function resourceInfo(bookUrl)
     local latestUpdateTime
     if latestUpdateTimeEl then
         local text = trim(lime.dom.text(latestUpdateTimeEl) or "")
-        lime.log.info("text", text)
+
         if text ~= "" then
             local ts, err = lime.time.parse_offset("更新时间：YYYY-MM-dd HH:mm", text, TZ_OFFSET)
             if ts then
                 latestUpdateTime = ts
-            else
-                lime.log.warn("deqixs time parse failed: " .. text .. " " .. tostring(err))
             end
         end
     end
@@ -427,7 +417,7 @@ end
 -- 章节列表 chapterList(bookUrl)
 -- =====================================================================
 local function chapterList(bookUrl)
-    lime.log.info("chapterList: " .. tostring(bookUrl))
+
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
         ["Accept-Language"] = BROWSER_HEADERS["Accept-Language"],
@@ -569,9 +559,12 @@ local function chapterContent(request)
     }
     local apiResponse = httpGet(apiUrl, apiHeaders)
 
-    local data, err4 = safeJsonDecode(apiResponse)
-    if not data then
-        error("解析章节内容失败: " .. tostring(err4))
+    local data = lime.json.decode(apiResponse)
+    if type(data) ~= "table" or type(data.status) ~= "number" then
+        error({ code = 2007, message = "得奇小说网章节响应格式无效" })
+    end
+    if data.status ~= 1 then
+        error({ code = 2001, message = "得奇小说网拒绝返回章节内容" })
     end
     if data and data.status == 1 and data.data and data.data.content then
         -- 契约:返回 ChapterBlock[];txt 块按"段落"拆分,
@@ -603,12 +596,7 @@ local function chapterContent(request)
         return { blocks = blocks }
     end
 
-    local msg = "获取章节内容失败"
-    if data and data.message then
-        msg = msg .. ": " .. tostring(data.message)
-    end
-    lime.log.warn(msg)
-    error(msg)
+    error({ code = 2007, message = "得奇小说网章节响应缺少正文" })
 end
 
 -- =====================================================================
@@ -655,7 +643,7 @@ local function search(query)
     -- keyword:本插件发现页不参与关键字过滤(网站 /sort/ 不支持),直接忽略
 
     local url = BASE .. "/sort/" .. sortId .. "/" .. page .. ".html"
-    lime.log.info("search: url=" .. url)
+
 
     local headers = {
         ["User-Agent"] = BROWSER_HEADERS["User-Agent"],
@@ -717,11 +705,16 @@ end
 -- =====================================================================
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "小说", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end

@@ -96,9 +96,6 @@ end
 -- MacCMS 偶尔在 JSON 字符串中返回原始控制字符，先按字节修复再解码。
 local function parseJsonLoose(text)
     local raw = trim(tostring(text or ""):gsub("^\239\187\191", ""))
-    if raw == "" then return nil, "empty response" end
-    local decoded, firstError = lime.json.decode(raw)
-    if decoded then return decoded end
 
     local output, inString, escaped = {}, false, false
     for index = 1, #raw do
@@ -125,9 +122,10 @@ local function parseJsonLoose(text)
             if char == '"' then inString = true end
         end
     end
-    local repaired = table.concat(output)
-    local result, errorMessage = lime.json.decode(repaired)
-    if not result then return nil, errorMessage or firstError or "invalid JSON" end
+    local result = lime.json.decode(table.concat(output))
+    if type(result) ~= "table" then
+        error({ code = 2007, message = "布布影视响应格式无效" })
+    end
     return result
 end
 
@@ -173,11 +171,9 @@ local function getJson(url)
         local replay = openBrowserChallenge(url)
         lime.storage.remove(PENDING_BROWSER_REQUEST_KEY)
         if replay.status < 200 or replay.status >= 300 then
-            error("布布影视浏览器请求失败: HTTP " .. tostring(replay.status))
+            error({ code = 2006, message = "布布影视浏览器请求失败: HTTP " .. tostring(replay.status) })
         end
-        local replayResult, replayError = parseJsonLoose(replay.body)
-        if not replayResult then error("布布影视响应解析失败: " .. tostring(replayError)) end
-        return replayResult
+        return parseJsonLoose(replay.body)
     end
 
     local response = lime.http.get(url, HEADERS)
@@ -187,11 +183,9 @@ local function getJson(url)
         lime.storage.remove(PENDING_BROWSER_REQUEST_KEY)
     end
     if response.status < 200 or response.status >= 300 then
-        error("布布影视请求失败: HTTP " .. tostring(response.status))
+        error({ code = 2006, message = "布布影视请求失败: HTTP " .. tostring(response.status) })
     end
-    local result, decodeError = parseJsonLoose(response.body)
-    if not result then error("布布影视响应解析失败: " .. tostring(decodeError)) end
-    return result
+    return parseJsonLoose(response.body)
 end
 
 local function listOf(payload)
@@ -282,14 +276,6 @@ local function routeOptions()
     return options
 end
 
-local function availableRoutesMessage(routes)
-    local labels = {}
-    for _, route in ipairs(routes) do
-        labels[#labels + 1] = routeLabel(route) .. "(" .. route .. ")"
-    end
-    return table.concat(labels, "、")
-end
-
 local function fixPlayUrl(value)
     return trim(htmlDecode(value)):gsub("\\/", "/")
 end
@@ -357,8 +343,7 @@ local function chapterList(resourceUrl, options)
         if trim(value) == route then selected = groups[index]; break end
     end
     if not selected or trim(selected) == "" then
-        error("当前线路 " .. route .. " 没有可用剧集；当前资源可用线路：" ..
-            availableRoutesMessage(froms) .. "。请在插件设置中切换线路后刷新目录")
+        error({ code = 2007, message = "当前线路没有可用剧集，请在插件设置中切换线路后刷新目录" })
     end
 
     local chapters = {}
@@ -378,7 +363,7 @@ local function chapterList(resourceUrl, options)
         end
     end
     if #chapters == 0 then
-        error("当前线路没有可用剧集，请在插件设置中切换线路后刷新目录")
+        error({ code = 2007, message = "当前线路没有可用剧集，请在插件设置中切换线路后刷新目录" })
     end
     local routes = {}
     for _, value in ipairs(froms) do
@@ -394,7 +379,7 @@ end
 local function chapterContent(request)
     if not request or not request.chapter then error("chapterContent: missing request.chapter") end
     local url = fixPlayUrl(request.chapter.url)
-    if url == "" then error("当前线路播放地址为空，请切换线路后刷新目录") end
+    if url == "" then error({ code = 2007, message = "当前线路播放地址为空，请切换线路后刷新目录" }) end
     local format, mimeType = detectFormat(url)
     return {
         blocks = {
@@ -445,7 +430,7 @@ end
 
 local function settingsAction(action, data)
     if action ~= "saveRoute" then
-        error("settingsAction: unknown action '" .. tostring(action) .. "'")
+        error("布布影视不支持该设置操作")
     end
     local route = trim(data.route)
     for _, option in ipairs(routeOptions()) do
@@ -458,8 +443,8 @@ end
 
 local function legacyTest(content)
     if content == "loose-json" then
-        local value, parseError = parseJsonLoose('{"list":[{"vod_name":"第一行\n第二行"}]}')
-        if not value then error("宽松 JSON 测试失败: " .. tostring(parseError)) end
+        local value = parseJsonLoose('{"list":[{"vod_name":"第一行\n第二行"}]}')
+        if not value then error("宽松 JSON 测试失败") end
         return { ok = true, message = "宽松 JSON 修复通过" }
     end
     if content == "cloudflare-challenge" then
@@ -506,27 +491,28 @@ local function legacyTest(content)
         end
         return { ok = true, message = "视频元数据映射通过" }
     end
-    local ok, result = pcall(function()
-        local records = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records
-        if #records == 0 then error("搜索无结果") end
-        local info = resourceInfo(records[1].url)
-        local catalog = chapterList(info.url)
-        local chapters = catalog.chapters
-        local contentResult = chapterContent({ resource = { url = info.url }, chapter = chapters[1] })
-        if not contentResult.blocks[1].sources[1].url then error("视频源为空") end
-        return { ok = true, message = "布布影视可用，共 " .. tostring(#chapters) .. " 集" }
-    end)
-    if ok then return result end
-    error(tostring(result))
+    local records = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records
+    if #records == 0 then error("搜索无结果") end
+    local info = resourceInfo(records[1].url)
+    local catalog = chapterList(info.url)
+    local chapters = catalog.chapters
+    local contentResult = chapterContent({ resource = { url = info.url }, chapter = chapters[1] })
+    if not contentResult.blocks[1].sources[1].url then error("视频源为空") end
+    return { ok = true, message = "布布影视可用，共 " .. tostring(#chapters) .. " 集" }
 end
 
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
-    local function run(entry, fn) local ok, value = pcall(fn); results[#results + 1] = { entry = entry, status = ok and "passed" or "failed", message = ok and "可用" or tostring(value) }; return ok and value or nil end
+    local function run(entry, fn)
+        local value = fn()
+        results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
+        return value
+    end
     records = run("search", function() local value = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    if records then info = run("resourceInfo", function() return resourceInfo(records[1].url) end) else results[#results + 1] = { entry = "resourceInfo", status = "blocked", message = "search 失败" } end
-    if info then catalog = run("chapterList", function() return chapterList(info.url) end) else results[#results + 1] = { entry = "chapterList", status = "blocked", message = "resourceInfo 失败" } end
-    if catalog and catalog.chapters and catalog.chapters[1] then run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end) else results[#results + 1] = { entry = "chapterContent", status = "blocked", message = "chapterList 失败" } end
+    info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
+    catalog = run("chapterList", function() return chapterList(info.url) end)
+    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
+    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", explore)
     return results
 end

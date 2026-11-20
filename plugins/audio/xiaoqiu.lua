@@ -303,7 +303,7 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource",
+    kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "小秋音乐",
@@ -314,10 +314,10 @@ return {
     },
     requires = { "crypto", "http", "json", "log" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "audio",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
-    } },
+    },
     hooks = { test = test },
 }

@@ -744,15 +744,15 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
+    kind = "resource", apiVersion = 1,
     manifest = { name = "得奇小说网", package = "com.meinil.lime.ai.deqixs", version = "0.0.1", author = "ai", description = "得奇小说网", homepage = BASE, logo = BASE .. "/favicon.ico" },
     requires = { "crypto", "dom", "http", "json", "log", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = { test = test },
 }

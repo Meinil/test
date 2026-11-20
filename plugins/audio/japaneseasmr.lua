@@ -103,13 +103,6 @@ local function parseJapaneseDuration(s)
     return (tonumber(m) or 0) * 60 + (tonumber(sec) or 0)
 end
 
--- "00:12:07" 这种 H:M:S 形式 → 秒
-local function parseHms(s)
-    if not s or s == "" then return 0 end
-    local h, m, sec = tostring(s):match("(%d+):(%d+):(%d+)")
-    return (tonumber(h) or 0) * 3600 + (tonumber(m) or 0) * 60 + (tonumber(sec) or 0)
-end
-
 -- shortcode `cv = '豊川ゆき'` / `gallery='5'` 抽值
 local function extractShortcodeAttr(html, name)
     if not html then return nil end
@@ -563,84 +556,6 @@ local function chapterContent(request)
     }
 end
 
--- ============================================================
--- 内部回归检查；正式 hooks.test() 在下方返回逐入口检测项数组。
--- ============================================================
-local function legacyTest(content)
-    local html, err = httpGet("/tags/")
-    if not html then
-        return { ok = false, message = "无法连接 " .. BASE .. ": " .. err.message }
-    end
-    local doc = lime.dom.parse(html)
-    local groups = parseTagGroups(doc)
-    local count = 0
-    for _, group in ipairs(groups) do
-        count = count + #group.children
-    end
-    local filters = baseExploreFilters()
-    local randomEnd = search({ keyword = "", page = 2, filters = { sort = "random" } })
-    local productHtml, productErr = httpGet("/148155/")
-    if not productHtml then
-        return { ok = false, message = "详情页标签测试失败: " .. productErr.message }
-    end
-    local productDoc = lime.dom.parse(productHtml)
-    local productTags = parseProductTags(productDoc)
-    local productIntro = parseProductIntro(productDoc)
-    local productTitles = parseTrackTitles(productDoc, 4)
-    local productLastUpdate = parseLastUpdate(productHtml)
-    local expectedTags = { ["18禁"] = false, ["Big Breasts 【巨乳/爆乳】"] = false, ["豊川ゆき"] = false }
-    for _, tag in ipairs(productTags) do
-        if expectedTags[tag] ~= nil then expectedTags[tag] = true end
-    end
-    local scopes = {
-        { keyword = "", filters = { tags = { "group-1", "2022" } }, first = "/tag/2022/", second = "/tag/2022/page/2/", separator = "?" },
-        { keyword = "", filters = { rating = "rating/maniax" }, first = "/category/rating/maniax/", second = "/category/rating/maniax/page/2/", separator = "?" },
-        { keyword = "asmr", filters = {}, first = "/?s=asmr&paged=1", second = "/?s=asmr&paged=2", separator = "&" },
-    }
-    local sorts = {
-        { value = "recent", query = "order=desc" },
-        { value = "popular_month", query = "orderby=post_views&order=desc&date=month" },
-        { value = "popular_year", query = "orderby=post_views&order=desc&date=year" },
-        { value = "popular_all", query = "orderby=post_views&order=desc" },
-    }
-    for _, scope in ipairs(scopes) do
-        for _, sortCase in ipairs(sorts) do
-            scope.filters.sort = sortCase.value
-            local first = buildExplorePath(scope.keyword, scope.filters, 1)
-            local second = buildExplorePath(scope.keyword, scope.filters, 2)
-            if first ~= scope.first .. scope.separator .. sortCase.query
-                or second ~= scope.second .. scope.separator .. sortCase.query then
-                return { ok = false, message = "search URL 组合异常: " .. sortCase.value }
-            end
-        end
-    end
-    if #groups == 0 or count < 5 then
-        return { ok = false, message = "tag groups 异常(groups=" .. #groups .. ", tags=" .. count .. ")" }
-    end
-    if #filters[2].options ~= 5 or filters[2].default ~= "recent" then
-        return { ok = false, message = "Sort 筛选声明异常" }
-    end
-    if #productTags < 10 or not expectedTags["18禁"]
-        or not expectedTags["Big Breasts 【巨乳/爆乳】"] or not expectedTags["豊川ゆき"] then
-        return { ok = false, message = "详情页标签解析异常(tags=" .. #productTags .. ")" }
-    end
-    if not productLastUpdate then
-        return { ok = false, message = "详情页 Last update 解析异常" }
-    end
-    if not productIntro or not productIntro:find("ある夏の暑い日", 1, true)
-        or productIntro:find("担当声優", 1, true) then
-        return { ok = false, message = "详情页日文简介解析异常" }
-    end
-    if productTitles[1] ~= "苦くて白い日焼け止めオイル(オイルマッサージ、馬乗りパイズリ、顔射、精子舐め)"
-        or productTitles[4] ~= "朝勃ちフェラは美味しい朝ごはん(お目覚めフェラ、正常位、中出し)" then
-        return { ok = false, message = "详情页章节标题解析异常" }
-    end
-    if type(randomEnd) ~= "table" or type(randomEnd.records) ~= "table" or #randomEnd.records ~= 0 then
-        return { ok = false, message = "search 分页对象异常" }
-    end
-    return { ok = true, message = "OK · groups=" .. #groups .. " · tags=" .. count .. " · productTags=" .. #productTags }
-end
-
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
@@ -681,12 +596,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource",
+    kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "japaneseasmr",
         package = "com.example.japaneseasmr.lime",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "japaneseasmr",
         homepage = "https://japaneseasmr.com",
@@ -694,12 +609,12 @@ return {
     },
     requires = { "browser", "dom", "http", "log", "storage", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "audio",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = {
         test = test,
     },

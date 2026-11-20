@@ -419,15 +419,15 @@ local function test(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
+    kind = "resource", apiVersion = 1,
     manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.5", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
     requires = { "browser", "crypto", "dom", "http", "log", "storage", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "novel",
         search = search, resourceInfo = resourceInfo,
         chapterList = chapterList, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = { test = test, settings = { list = settings, action = saveSite } },
 }

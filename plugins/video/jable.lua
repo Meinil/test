@@ -445,65 +445,6 @@ local function search(query)
     return { records = records }
 end
 
-local function legacyTest(content)
-    if content == "parser" then
-        local doc = lime.dom.parse("<title>MIAA-456 測試標題 - Jable.TV | 免費高清AV在線看 | J片 AV看到飽</title>")
-        local title = pageTitle(doc)
-        local records = parseVideoList([[
-            <div class="video-img-box">
-                <div class="img-box"><img data-src="/cover.jpg"></div>
-                <div class="detail"><h6 class="title"><a href="/videos/test/">測試影片</a></h6></div>
-            </div>
-        ]])
-        local detailHtml = [[
-            <div class="info-header">
-                <div class="header-left"><h6>
-                    <span class="mr-3">2 天前</span><span class="mr-3">12 345</span>
-                    <div class="models">
-                        <a class="model" href="https://jable.tv/models/hikaru-emo/"><span data-original-title="皆月ひかる">皆</span></a>
-                        <a class="model" href="https://jable.tv/models/azusa-misaki/"><img data-original-title="岬あずさ"></a>
-                        <a class="model" href="https://jable.tv/models/mitani-akari/"><img data-original-title="美谷朱里"></a>
-                    </div>
-                </h6></div>
-                <div class="header-right"><span class="inactive-color">上市於 2026-07-16</span></div>
-            </div>
-            <button class="btn btn-action fav"><span class="count">8 378</span></button>
-        ]]
-        local detailDoc = lime.dom.parse(detailHtml)
-        local author, latestUpdateTime, meta = parseDetailFields(detailDoc, detailHtml)
-        local sortedUrl = listPageUrl(BASE .. "/categories/test/", AJAX_BLOCKS.category, 1, nil, "video_viewed")
-        local hlsUrl = extractM3u8Url("<script>var hlsUrl = 'https:\\/\\/media.example\\/video.m3u8';</script>")
-        if title ~= "MIAA-456 測試標題"
-            or #records ~= 1
-            or records[1].name ~= "測試影片"
-            or records[1].author ~= ""
-            or records[1].url ~= BASE .. "/videos/test/"
-            or records[1].chapterCount ~= 1
-            or records[1].latestChapter ~= "測試影片"
-            or author ~= "皆月ひかる/岬あずさ/美谷朱里"
-            or not latestUpdateTime
-            or not meta or meta[1].label ~= "看过" or meta[1].field ~= "12 345"
-            or not meta[2] or meta[2].label ~= "喜欢" or meta[2].field ~= "8 378"
-            or not sortedUrl:find("sort_by=" .. urlEncode("video_viewed"), 1, true)
-            or not sortedUrl:find("from=01", 1, true)
-            or hlsUrl ~= "https://media.example/video.m3u8" then
-            error("Jable 页面解析测试失败")
-        end
-        return { ok = true, message = "Jable 页面解析通过" }
-    end
-
-    local records = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records
-    if #records == 0 then error("搜索无结果") end
-    local info = resourceInfo(records[1].url)
-    if not info.name or info.name == "" then error("资源详情名称获取失败") end
-    local catalog = chapterList(info.url)
-    if not catalog.chapters or #catalog.chapters == 0 then error("章节目录获取失败") end
-    local contentResult = chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] })
-    if not contentResult.blocks or not contentResult.blocks[1] then error("视频块为空") end
-    if not contentResult.blocks[1].sources or not contentResult.blocks[1].sources[1].url then error("视频源为空") end
-    return { ok = true, message = "Jable 可用，搜索到 " .. tostring(#records) .. " 个结果" }
-end
-
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
@@ -544,12 +485,12 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource",
+    kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "Jable TV",
         package = "com.meinil.lime.video.jable",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "Jable.TV | 免費高清AV在線看 | J片 AV看到飽",
         homepage = "https://jable.tv",
@@ -557,12 +498,14 @@ return {
     },
     requires = { "browser", "crypto", "dom", "http", "storage", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "video",
-        search = searchResources, resourceInfo = describeResource,
-        chapterList = listResourceChapters, chapterContent = chapterContent,
+        search = searchResources,
+        resourceInfo = describeResource,
+        chapterList = listResourceChapters,
+        chapterContent = chapterContent,
         explore = exploreFilters,
-    } },
+    },
     hooks = {
         test = test,
     },

@@ -3,16 +3,15 @@
 -- =====================================================================
 local BASE = "https://www.qishuxia.com"
 
--- 通用 HTTP 头(模拟 Chrome 120 真实请求)
-local BROWSER_HEADERS = {
+local SEARCH_URL = BASE .. "/modules/article/search.php"
+local GET_HEADERS = {
     ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    ["Accept-Language"] = "zh-CN,zh;q=0.9",
-    ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    ["Accept-Encoding"] = "gzip, deflate, br",
-    ["sec-ch-ua"] = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-    ["sec-ch-ua-mobile"] = "?0",
-    ["sec-ch-ua-platform"] = '"Windows"',
-    ["Upgrade-Insecure-Requests"] = "1",
+}
+local SEARCH_HEADERS = {
+    ["User-Agent"] = GET_HEADERS["User-Agent"],
+    ["Content-Type"] = "application/x-www-form-urlencoded",
+    ["Origin"] = BASE,
+    ["Referer"] = SEARCH_URL,
 }
 
 -- 时区偏移(东八区,站点返回的时间视为北京时间)
@@ -90,17 +89,6 @@ end
 -- 工具:DOM 包装(我们的 lime.dom 只有 select/text/attr,没有 selectText/selectAttr/remove)
 -- =====================================================================
 
---- legado.dom.selectText 的等价物:取首个匹配元素的 text(无匹配空字符串)
---- @param doc userdata DomDocument
---- @param sel string CSS 选择器
---- @return string
-local function selectText(doc, sel)
-    local el = lime.dom.select(doc, sel)
-    if not el then return "" end
-    local t = lime.dom.text(el)
-    return t or ""
-end
-
 --- lime.dom.select / selectAll 只接受 DomDocument,不能从 element 子树内查询。
 --- 把 element 的 outerHTML 重新 parse 成 sub-doc 再 select,即可在 element 子树内做后代选择器。
 local function selectIn(itemEl, sel)
@@ -120,25 +108,17 @@ local function selectInText(itemEl, sel)
     return t or ""
 end
 
---- 子树内 selectAttr
-local function selectInAttr(itemEl, sel, key)
-    local el = selectIn(itemEl, sel)
-    if not el then return nil end
-    return lime.dom.attr(el, key)
-end
-
 -- =====================================================================
 -- 工具:HTTP 包装
 -- =====================================================================
 
---- GET 成功返回正文；分类后续页可单独处理 HTTP 404。
-local function httpGet(url, headers, allowNotFound)
-    local response = lime.http.get(url, headers)
+--- 首次访问若遇到站点会话初始化响应，由宿主保存 Cookie，再请求同一个 URL。
+local function httpGet(url)
+    local response = lime.http.get(url, GET_HEADERS)
     if response.status == 403 and response.body and response.body:find("window.location.href", 1, true) then
         lime.log.info("httpGet: retry after 403 js redirect challenge")
-        response = lime.http.get(url, headers)
+        response = lime.http.get(url, GET_HEADERS)
     end
-    if allowNotFound and response.status == 404 then return nil end
     if response.status < 200 or response.status >= 300 then
         error({ code = 2006, message = "lime.http.get: HTTP " .. tostring(response.status) })
     end
@@ -340,90 +320,14 @@ local function parseBooks(doc, defaultKind, isSearch)
     return books
 end
 
--- =====================================================================
--- 工具:站点预热(普通 GET 的 Set-Cookie 会由 Rust 自动接收)
--- =====================================================================
-
---- 预热站点 cookie:首次访问必返 403 + Set-Cookie,reqwest 把 cookie 入 jar 后
---- 后续请求自动带上 Cookie 头,即可正常 200。预热调用是幂等的。
-local function warmSite()
-    local headers = {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "none",
-        ["Sec-Fetch-User"]           = "?1",
-    }
-    httpGet(BASE .. "/", headers)
-end
-
--- =====================================================================
--- 普通搜索实现
--- =====================================================================
-
-local function searchKeyword(keyword, page)
-
-    if not keyword or keyword == "" then return {} end
-
-    warmSite()
-
-    -- 预热搜索页,触发服务端写入 jieqiVisitTime=jieqiArticlesearchTime=...
-    -- warmSite 只 warm 了主页,这里补一次 search.php 以让 jieqi CMS 反爬 cookie 入 jar
-    httpGet(BASE .. "/modules/article/search.php", {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Upgrade-Insecure-Requests"] = "1",
-        ["Referer"]                  = BASE .. "/",
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "same-origin",
-        ["Sec-Fetch-User"]           = "?1",
-    })
-
-    local headers = {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Content-Type"]             = "application/x-www-form-urlencoded",
-        ["Origin"]                   = BASE,
-        ["Referer"]                  = BASE .. "/",
-        ["Upgrade-Insecure-Requests"] = "1",
-        ["Cache-Control"]            = "max-age=0",
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "same-origin",
-        ["Sec-Fetch-User"]           = "?1",
-    }
-
-    -- 服务端 search 接口用 GBK 编码 keyword(form 表单提交到 GBK 网站)
-    local encodedKeyword, encErr = lime.crypto.urlEncodeWithCharset(tostring(keyword), "gbk")
+--- 普通搜索表单使用 GBK 百分号编码，直接提交，无须预热。
+local function searchKeyword(keyword)
+    local encodedKeyword = lime.crypto.urlEncodeWithCharset(keyword, "gbk")
     if not encodedKeyword then
         error("搜索词 GBK 编码失败")
     end
-
-    local body = "searchkey=" .. encodedKeyword
-    if page and tonumber(page) and tonumber(page) > 1 then
-        body = body .. "&page=" .. tostring(page)
-    end
-
-    local html = httpPost(BASE .. "/modules/article/search.php", body, headers)
-
-    local doc = lime.dom.parse(html)
-    local books = parseBooks(doc, "", true)
-
-    return books, html
+    local html = httpPost(SEARCH_URL, "searchkey=" .. encodedKeyword, SEARCH_HEADERS)
+    return parseBooks(lime.dom.parse(html), "", true)
 end
 
 -- =====================================================================
@@ -432,25 +336,8 @@ end
 
 local function resourceInfo(bookUrl)
 
-    warmSite()
-    local headers = {
-        ["User-Agent"]             = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]        = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                 = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]        = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]              = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]       = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]     = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-        ["Referer"]                = BASE .. "/",
-        ["Sec-Fetch-Dest"]         = "document",
-        ["Sec-Fetch-Mode"]         = "navigate",
-        ["Sec-Fetch-Site"]         = "same-origin",
-        ["Sec-Fetch-User"]         = "?1",
-    }
-
     local fullUrl = absolutize(bookUrl)
-    local html = httpGet(fullUrl, headers)
+    local html = httpGet(fullUrl)
 
     local info = parseBookInfoHtml(html)
     if not info or info.name == "" then
@@ -476,25 +363,8 @@ end
 
 local function chapterList(bookUrl)
 
-    warmSite()
-    local headers = {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-        ["Referer"]                  = BASE .. "/",
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "same-origin",
-        ["Sec-Fetch-User"]           = "?1",
-    }
-
     local fullUrl = absolutize(bookUrl)
-    local html = httpGet(fullUrl, headers)
+    local html = httpGet(fullUrl)
 
     local doc = lime.dom.parse(html)
     local container = lime.dom.select(doc, "#section-list")
@@ -537,25 +407,8 @@ end
 local function chapterContent(request)
     local chapterUrl = request.chapter.url
 
-    warmSite()
-    local headers = {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-        ["Referer"]                  = BASE .. "/",
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "same-origin",
-        ["Sec-Fetch-User"]           = "?1",
-    }
-
     local fullUrl = absolutize(chapterUrl)
-    local html = httpGet(fullUrl, headers)
+    local html = httpGet(fullUrl)
 
     local doc = lime.dom.parse(html)
     -- 主内容容器优先 #content,fallback .content
@@ -615,60 +468,22 @@ end
 -- =====================================================================
 -- 统一搜索 query = { keyword, filters, page }
 -- 返回 { records = ResourceDetailVO[], total? }
--- 站点发现页是分类目录页(/<catId>[/N.html]),关键字不可用,直接忽略
+-- 发现只读取分类首页；普通搜索也只消费首屏。
 -- =====================================================================
 
 local function search(query)
     query = query or {}
-    local keyword = query.keyword or ""
-    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.page) or 1
-        return { records = searchKeyword(keyword, page) }
-    end
-    warmSite()
+    if (tonumber(query.page) or 1) > 1 then return { records = {} } end
 
-    local sortId
-    if query.filters.category then
-        sortId = tostring(query.filters.category)
-    else
-        sortId = CATEGORIES[1].field -- 默认"玄幻奇幻"
+    local keyword = trim(query.keyword or "")
+    local filters = query.filters or {}
+    if keyword ~= "" and next(filters) == nil then
+        return { records = searchKeyword(keyword) }
     end
 
-    local page = query.page or 1
-
-    local firstUrl = BASE .. "/" .. sortId .. "/"
-    local url = page > 1 and (firstUrl .. page .. ".html") or firstUrl
-
-
-    local headers = {
-        ["User-Agent"]               = BROWSER_HEADERS["User-Agent"],
-        ["Accept-Language"]          = BROWSER_HEADERS["Accept-Language"],
-        ["Accept"]                   = BROWSER_HEADERS["Accept"],
-        ["Accept-Encoding"]          = BROWSER_HEADERS["Accept-Encoding"],
-        ["sec-ch-ua"]                = BROWSER_HEADERS["sec-ch-ua"],
-        ["sec-ch-ua-mobile"]         = BROWSER_HEADERS["sec-ch-ua-mobile"],
-        ["sec-ch-ua-platform"]       = BROWSER_HEADERS["sec-ch-ua-platform"],
-        ["Upgrade-Insecure-Requests"] = BROWSER_HEADERS["Upgrade-Insecure-Requests"],
-        ["Referer"]                  = BASE .. "/",
-        ["Sec-Fetch-Dest"]           = "document",
-        ["Sec-Fetch-Mode"]           = "navigate",
-        ["Sec-Fetch-Site"]           = "same-origin",
-        ["Sec-Fetch-User"]           = "?1",
-    }
-
-    local html = httpGet(url, headers, page > 1)
-    if not html then
-        -- 部分分类只提供首页。只有首页明确没有翻页链接，才能把后续页 404 当作空页。
-        local first = lime.dom.parse(httpGet(firstUrl, headers))
-        local pager = "ul.pagination.pagination-mga"
-        if lime.dom.select(first, pager) and not lime.dom.select(first, pager .. " a[href]") then
-            return { records = {} }
-        end
-        error({ code = 2006, message = "奇书网请求失败：HTTP 404" })
-    end
-
-    local doc = lime.dom.parse(html)
-    return { records = parseBooks(doc, "", false) }
+    local category = filters.category or CATEGORIES[1].field
+    local html = httpGet(BASE .. "/" .. category .. "/")
+    return { records = parseBooks(lime.dom.parse(html), "", false) }
 end
 
 -- =====================================================================
@@ -716,15 +531,15 @@ local function listResourceChapters(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource", apiVersion = 1,
-    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.2", author = "ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
+    kind = "resource", apiVersion = 1,
+    manifest = { name = "奇书网", package = "com.meinil.lime.ai.qishuxia", version = "0.0.4", author = "ai", description = "奇书网 - 好看的小说大全免费在线阅读和 txt 下载", homepage = "https://www.qishuxia.com", logo = "https://www.qishuxia.com/favicon.ico" },
     requires = { "crypto", "dom", "http", "log", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = { test = test },
 }

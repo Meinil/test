@@ -441,66 +441,6 @@ local function settingsAction(action, data)
     error("不支持的播放线路")
 end
 
-local function legacyTest(content)
-    if content == "loose-json" then
-        local value = parseJsonLoose('{"list":[{"vod_name":"第一行\n第二行"}]}')
-        if not value then error("宽松 JSON 测试失败") end
-        return { ok = true, message = "宽松 JSON 修复通过" }
-    end
-    if content == "cloudflare-challenge" then
-        local detected = requiresBrowserAuth({ status = 403, body = "<title>Just a moment...</title><script src='/cdn-cgi/challenge-platform/'></script>" })
-        local ordinary = requiresBrowserAuth({ status = 403, body = '{"message":"forbidden"}' })
-        local options = browserChallengeOptions("https://www.freeokk.pro/api.php/provide/vod/?ac=detail")
-        if not detected or ordinary or options.request.method ~= "GET" or options.request.url ~= options.url then
-            error("Cloudflare challenge 识别测试失败")
-        end
-        return { ok = true, message = "Cloudflare challenge 识别通过" }
-    end
-    if content == "metadata" then
-        local resource = resourceOf({
-            vod_id = "meta-test",
-            vod_name = "测试视频",
-            vod_director = "导演",
-            vod_actor = "声优甲",
-            type_name = "动漫",
-            vod_tag = "动作, 科幻，悬疑",
-            vod_total = "12",
-            vod_time = "2026-07-20 12:34:56",
-        })
-        if not resource
-            or resource.author ~= "导演"
-            or #resource.tags ~= 3
-            or resource.tags[1] ~= "动作"
-            or resource.tags[2] ~= "科幻"
-            or resource.tags[3] ~= "悬疑"
-            or not resource.meta
-            or resource.meta[1].label ~= "声优"
-            or resource.meta[1].field ~= "声优甲"
-            or resource.chapterCount ~= 12
-            or not resource.latestUpdateTime then
-            error("视频元数据映射测试失败")
-        end
-        local movie = resourceOf({
-            vod_id = "meta-movie",
-            vod_name = "测试电影",
-            vod_actor = "演员甲",
-            type_name = "电影",
-        })
-        if not movie.meta or movie.meta[1].label ~= "演员" then
-            error("非动漫视频演员字段映射测试失败")
-        end
-        return { ok = true, message = "视频元数据映射通过" }
-    end
-    local records = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records
-    if #records == 0 then error("搜索无结果") end
-    local info = resourceInfo(records[1].url)
-    local catalog = chapterList(info.url)
-    local chapters = catalog.chapters
-    local contentResult = chapterContent({ resource = { url = info.url }, chapter = chapters[1] })
-    if not contentResult.blocks[1].sources[1].url then error("视频源为空") end
-    return { ok = true, message = "布布影视可用，共 " .. tostring(#chapters) .. " 集" }
-end
-
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
@@ -546,12 +486,12 @@ local function invokeSettings(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource",
+    kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "布布影视",
         package = "com.meinil.lime.video.bbys",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "FreeOK/MacCMS 视频源，目录严格使用插件设置中选定的线路",
         homepage = "https://bbys.app",
@@ -559,12 +499,12 @@ return {
     },
     requires = { "browser", "crypto", "http", "json", "storage", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "video",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = {
         settings = { list = settings, action = invokeSettings },
         test = test,

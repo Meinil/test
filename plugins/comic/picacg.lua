@@ -503,50 +503,6 @@ end
 
 local settings
 
---- 冒烟测试。
-local function legacyTest(content)
-    -- 纯本地验证登录字段与请求设置 dialog 已解耦。
-    if content == "request-settings-schema" then
-        local login, request
-        for _, setting in ipairs(settings()) do
-            if setting.key == "login" then login = setting end
-            if setting.key == "request" then request = setting end
-        end
-        if not login or not request then error("Picacg 请求设置 dialog 缺失") end
-        local loginNames = {}
-        for _, field in ipairs(login.fields) do loginNames[field.field] = true end
-        if loginNames.imageQuality or loginNames.appChannel then
-            error("Picacg 登录 dialog 仍包含请求参数")
-        end
-        if request.key ~= "request" or request.fields[1].field ~= "imageQuality"
-            or request.fields[2].field ~= "appChannel"
-            or request.actions[1].action ~= "saveRequestSettings" then
-            error("Picacg 请求设置 dialog 结构测试失败")
-        end
-        return { ok = true, message = "Picacg 请求设置结构通过" }
-    end
-    -- 纯本地回归测试不依赖登录或网络，供仓库验证章节路由映射。
-    if content == "chapter-routing" then
-        local chapters = buildChapterDescriptors("comic-id", {
-            { _id = "chapter-b", title = "第二章", order = 20 },
-            { _id = "chapter-a", title = "第一章", order = 10 },
-        })
-        if chapters[1].id ~= "chapter-a" or chapters[1].url ~= "comic-id#1" or chapters[1].index ~= 0 then
-            error("Picacg 章节路由映射测试失败")
-        end
-        if chapters[2].id ~= "chapter-b" or chapters[2].url ~= "comic-id#2" or chapters[2].index ~= 1 then
-            error("Picacg 章节路由顺序测试失败")
-        end
-        return { ok = true, message = "Picacg 章节路由映射通过" }
-    end
-    -- 验证空白消息不会遮蔽 HTTP 状态回退，同时保留有效服务端消息。
-    requireLogin()
-    local data, err = requestJson("GET", "comics/random")
-    if not data then error(err) end
-    local count = data.comics and #data.comics or 0
-    return { ok = true, message = "Picacg 可用,随机漫画 " .. count .. " 本" }
-end
-
 local function test(request)
     local results, records, info, catalog = {}, nil, nil, nil
     local function run(entry, fn)
@@ -759,12 +715,12 @@ local function invokeSettings(request)
 end
 
 return {
-    protocol = "lime-plugin", kind = "resource",
+    kind = "resource",
     apiVersion = 1,
     manifest = {
         name = "Picacg",
         package = "com.meinil.lime.ai.picacg",
-        version = "0.0.1",
+        version = "0.0.2",
         author = "ai",
         description = "Picacg 漫画源,支持登录、搜索、发现、详情、章节与图片阅读。",
         homepage = "https://www.bikamanhua.com.cn",
@@ -772,12 +728,12 @@ return {
     },
     requires = { "crypto", "http", "json", "log", "storage", "time" },
 
-    capabilities = { resource = {
+    capabilities = {
         content = "comic",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
         explore = explore,
-    } },
+    },
     hooks = {
         settings = { list = settings, action = invokeSettings },
         test = test,

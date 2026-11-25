@@ -378,7 +378,7 @@ local function chapterContent(request)
     }
 end
 
-local function exploreFilters()
+local function exploreSchema()
     local html = getPage(BASE .. "/categories/")
     local doc = lime.dom.parse(html)
     local options = {}
@@ -398,32 +398,35 @@ local function exploreFilters()
     end
 
     return {
-        {
-            field = "category",
-            label = "分类",
-            type = "single",
-            default = "",
-            options = options,
-        },
-        {
-            field = "sortBy",
-            label = "排序",
-            type = "single",
-            default = "post_date",
-            options = SORT_OPTIONS,
+        supportsPagination = true,
+        filters = {
+            {
+                field = "category",
+                label = "分类",
+                type = "single",
+                default = "",
+                options = options,
+            },
+            {
+                field = "sortBy",
+                label = "排序",
+                type = "single",
+                default = "post_date",
+                options = SORT_OPTIONS,
+            },
         },
     }
 end
 
 local function search(query)
     query = query or {}
-    local keyword = query.keyword or ""
+    local keyword = trim(query.keyword or "")
+    return { records = searchKeyword(keyword, query.page) }
+end
 
-    if trim(keyword) ~= "" then
-        return { records = searchKeyword(keyword, query.page) }
-    end
-
-    local filters = query.filters
+local function browse(query)
+    query = query or {}
+    local filters = query.filters or {}
     local categorySlug = trim(tostring(filters.category or ""))
     local selectedSort = normalizeSort(filters.sortBy)
     local current = fromPage(query.page)
@@ -452,12 +455,12 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "乙愛麗絲", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "乙愛麗絲", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", exploreFilters)
+    run("explore", exploreSchema)
     return results
 end
 
@@ -470,6 +473,12 @@ end
 
 local function searchResources(query)
     local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function browseResources(query)
+    local page = browse(query)
     for _, record in ipairs(page.records) do resourceRecord(record) end
     return page
 end
@@ -504,7 +513,8 @@ return {
         resourceInfo = describeResource,
         chapterList = listResourceChapters,
         chapterContent = chapterContent,
-        explore = exploreFilters,
+        explore = browseResources,
+        exploreSchema = exploreSchema,
     },
     hooks = {
         test = test,

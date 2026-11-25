@@ -337,53 +337,63 @@ end
 
 
 --- 发现页筛选声明。
-local function explore()
+local function exploreSchema(query)
+    local filters = query and query.filters or {}
+    local source = filters.source or "latest"
+    local hasCategory = filters.category and filters.category ~= ""
+    local supportsPagination = hasCategory or source == "latest"
     local categoryOptions = {}
     for _, category in ipairs(CATEGORIES) do
         categoryOptions[#categoryOptions + 1] = { field = category, label = category }
     end
     return {
-        { field = "source", label = "来源", type = "single", options = SOURCE_OPTIONS },
-        { field = "category", label = "分类", type = "single", options = categoryOptions },
-        { field = "sort", label = "排序", type = "single", options = SORT_OPTIONS, default = SORT_OPTIONS[1].field  },
+        supportsPagination = supportsPagination,
+        filters = {
+            { field = "source", label = "来源", type = "single", default = "latest", options = SOURCE_OPTIONS, reloadOnChange = true },
+            { field = "category", label = "分类", type = "single", options = categoryOptions, reloadOnChange = true },
+            { field = "sort", label = "排序", type = "single", options = SORT_OPTIONS, default = SORT_OPTIONS[1].field },
+        },
     }
 end
 
---- 统一普通搜索与发现页搜索。
+local function parseComicsPage(comics, current)
+    if type(comics) ~= "table" then error("Picacg 搜索响应缺少漫画分页") end
+    local pages = tonumber(comics.pages)
+    local total = tonumber(comics.total)
+    if not total or total < 0 or total ~= math.floor(total) then total = nil end
+    if pages and current > pages then return { records = {}, total = total } end
+    local actualPage = tonumber(comics.page)
+    if actualPage and actualPage ~= current then error("Picacg 返回的页码与请求不一致") end
+    if type(comics.docs) ~= "table" then error("Picacg 搜索缺少结果列表") end
+    return { records = docsToResources(comics.docs), total = total }
+end
+
+--- 普通全局搜索。
 local function search(query)
     requireLogin()
     query = query or {}
-    local keyword = query.keyword or ""
-    local filters = query.filters
+    local kw = trim(query.keyword or "")
+    local current = tonumber(query.page) or 1
+    local path = "comics/advanced-search?page=" .. current
+    local data, err = requestJson("POST", path, { keyword = kw, sort = "dd" })
+    if not data then error(err) end
+    return parseComicsPage(data.comics, current)
+end
+
+--- 发现页分类/榜单浏览。
+local function browse(query)
+    requireLogin()
+    query = query or {}
+    local filters = query.filters or {}
     local current = tonumber(query.page) or 1
     local sort = filters.sort or "dd"
-    local kw = trim(keyword)
-
-    local function pageResult(comics)
-        if type(comics) ~= "table" then error("Picacg 搜索响应缺少漫画分页") end
-        local pages = tonumber(comics.pages)
-        local total = tonumber(comics.total)
-        if not total or total < 0 or total ~= math.floor(total) then total = nil end
-        if pages and current > pages then return { records = {}, total = total } end
-        local actualPage = tonumber(comics.page)
-        if actualPage and actualPage ~= current then error("Picacg 返回的页码与请求不一致") end
-        if type(comics.docs) ~= "table" then error("Picacg 搜索缺少结果列表") end
-        return { records = docsToResources(comics.docs), total = total }
-    end
-
-    if kw ~= "" then
-        local path = "comics/advanced-search?page=" .. current
-        local data, err = requestJson("POST", path, { keyword = kw, sort = sort })
-        if not data then error(err) end
-        return pageResult(data.comics)
-    end
 
     if filters.category and filters.category ~= "" then
         local category, _ = lime.crypto.urlEncode(filters.category)
         local path = "comics?page=" .. current .. "&c=" .. category .. "&s=" .. sort
         local data, err = requestJson("GET", path)
         if not data then error(err) end
-        return pageResult(data.comics)
+        return parseComicsPage(data.comics, current)
     end
 
     local source = filters.source or "latest"
@@ -404,7 +414,7 @@ local function search(query)
     local path = "comics?page=" .. current .. "&s=" .. sort
     local data, err = requestJson("GET", path)
     if not data then error(err) end
-    return pageResult(data.comics)
+    return parseComicsPage(data.comics, current)
 end
 
 --- 拉取漫画详情。
@@ -510,12 +520,12 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "comic", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "comic", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", explore)
+    run("explore", exploreSchema)
     return results
 end
 
@@ -700,6 +710,12 @@ local function searchResources(query)
     return page
 end
 
+local function browseResources(query)
+    local page = browse(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
 local function describeResource(request)
     local record = resourceRecord(resourceInfo(request.resource.url))
     record.id = request.resource.id
@@ -732,7 +748,8 @@ return {
         content = "comic",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
-        explore = explore,
+        explore = browseResources,
+        exploreSchema = exploreSchema,
     },
     hooks = {
         settings = { list = settings, action = invokeSettings },

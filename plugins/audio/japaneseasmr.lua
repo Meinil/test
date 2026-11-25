@@ -312,6 +312,12 @@ end
 local function baseExploreFilters()
     return {
         {
+            field = "keyword",
+            label = "Keyword",
+            type = "text",
+            placeholder = "搜索关键词",
+        },
+        {
             field = "rating",
             label = "Rating",
             type = "single",
@@ -327,6 +333,7 @@ local function baseExploreFilters()
             label = "Sort",
             type = "single",
             default = "recent",
+            reloadOnChange = true,
             options = {
                 { field = "recent",        label = "Recent" },
                 { field = "popular_month", label = "Popular month" },
@@ -400,7 +407,10 @@ local function buildExplorePath(keyword, filters, page)
     return appendQuery(path, SORT_QUERY[filters.sort or "recent"] or SORT_QUERY.recent)
 end
 
-local function explore()
+local function exploreSchema(query)
+    local reqFilters = query and query.filters or {}
+    local sort = reqFilters.sort or "recent"
+    local supportsPagination = sort ~= "random"
     local html, err = httpGet("/tags/")
 
     local filters = baseExploreFilters()
@@ -408,7 +418,7 @@ local function explore()
     -- 标签页可能被 Cloudflare 单独拒绝;标签筛选是可选增强,不阻断整个发现入口。
     if not html then
         lime.log.warn("explore: tags unavailable: " .. err.message)
-        return filters
+        return { supportsPagination = supportsPagination, filters = filters }
     end
     local doc = lime.dom.parse(html)
     local tag_options = parseTagGroups(doc)
@@ -421,18 +431,21 @@ local function explore()
             options = tag_options,
         }
     end
-    return filters
+    return { supportsPagination = supportsPagination, filters = filters }
 end
 
 local function search(query)
     query = query or {}
-    local keyword = query.keyword or ""
-    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        local page = tonumber(query.page) or 1
-        return { records = searchKeyword(keyword, page) }
-    end
+    local keyword = trim(query.keyword or "")
     local page = math.max(1, math.floor(tonumber(query.page) or 1))
-    local filters = query.filters
+    return { records = searchKeyword(keyword, page) }
+end
+
+local function browse(query)
+    query = query or {}
+    local page = math.max(1, math.floor(tonumber(query.page) or 1))
+    local filters = query.filters or {}
+    local keyword = trim(filters.keyword or "")
     local sort = filters.sort or "recent"
 
     -- Random 每次请求都会重排，只允许首屏并通过显式刷新获取下一批。
@@ -563,12 +576,12 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "asmr", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "asmr", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", explore)
+    run("explore", exploreSchema)
     return results
 end
 
@@ -581,6 +594,12 @@ end
 
 local function searchResources(query)
     local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function browseResources(query)
+    local page = browse(query)
     for _, record in ipairs(page.records) do resourceRecord(record) end
     return page
 end
@@ -613,7 +632,8 @@ return {
         content = "audio",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
-        explore = explore,
+        explore = browseResources,
+        exploreSchema = exploreSchema,
     },
     hooks = {
         test = test,

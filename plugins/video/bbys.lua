@@ -297,25 +297,22 @@ local function resourceInfo(url)
     return resource
 end
 
-local function explore()
+local function exploreSchema()
     return {
-        {
-            field = "category",
-            label = "分类",
-            type = "single",
-            default = "1",
-            options = CATEGORIES,
+        supportsPagination = true,
+        filters = {
+            {
+                field = "category",
+                label = "分类",
+                type = "single",
+                default = "1",
+                options = CATEGORIES,
+            },
         },
     }
 end
 
--- MacCMS 提供明确 pagecount；不从每页条数估算 total。
-local function search(query)
-    local current = math.max(1, math.floor(tonumber(query.page) or 1))
-    local keyword = trim(query.keyword or "")
-    local request = "ac=detail&pg=" .. current
-    if keyword ~= "" then request = request .. "&wd=" .. urlEncode(keyword)
-    else request = request .. "&t=" .. tostring(query.filters.category or "1") end
+local function fetchVodPage(request, current)
     local data = getJson(apiUrl(request))
     local pages = tonumber(data.pagecount)
     local total = tonumber(data.total)
@@ -327,6 +324,23 @@ local function search(query)
         error("布布影视搜索缺少结果列表")
     end
     return { records = resourcesOf(data), total = total }
+end
+
+-- MacCMS 提供明确 pagecount；不从每页条数估算 total。
+local function search(query)
+    query = query or {}
+    local current = math.max(1, math.floor(tonumber(query.page) or 1))
+    local keyword = trim(query.keyword or "")
+    local request = "ac=detail&pg=" .. current .. "&wd=" .. urlEncode(keyword)
+    return fetchVodPage(request, current)
+end
+
+local function browse(query)
+    query = query or {}
+    local current = math.max(1, math.floor(tonumber(query.page) or 1))
+    local filters = query.filters or {}
+    local request = "ac=detail&pg=" .. current .. "&t=" .. tostring(filters.category or "1")
+    return fetchVodPage(request, current)
 end
 
 local function chapterList(resourceUrl, options)
@@ -448,12 +462,12 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "黑夜告白", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "黑夜告白", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", explore)
+    run("explore", exploreSchema)
     return results
 end
 
@@ -467,6 +481,12 @@ end
 
 local function searchResources(query)
     local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function browseResources(query)
+    local page = browse(query)
     for _, record in ipairs(page.records) do resourceRecord(record) end
     return page
 end
@@ -503,7 +523,8 @@ return {
         content = "video",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
-        explore = explore,
+        explore = browseResources,
+        exploreSchema = exploreSchema,
     },
     hooks = {
         settings = { list = settings, action = invokeSettings },

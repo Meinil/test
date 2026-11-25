@@ -536,65 +536,81 @@ local function shelf(origin, url, page)
     return records
 end
 
-local function explore(query)
+local function exploreSchema(query)
+    local section = selection(query and query.filters or {})
     local sections = { field = "category", label = "分类", type = "cascade",
         default = { "home", "home" }, options = SECTIONS, reloadOnChange = true }
-    if selection(query and query.filters or {}) == "home" then return { sections } end
-    return { sections, { field = "sort", label = "排序", type = "single", default = "update_time", options = SORTS } }
+    local supportsPagination = section ~= "home" and section ~= "rank"
+    if section == "home" then
+        return { supportsPagination = supportsPagination, filters = { sections } }
+    end
+    return {
+        supportsPagination = supportsPagination,
+        filters = {
+            sections,
+            { field = "sort", label = "排序", type = "single", default = "update_time", options = SORTS },
+        },
+    }
 end
 
-local function search(query)
-    local keyword = trim(query.keyword)
-    local filters = query.filters or {}
-    local page = query.page or 1
-    local origin = siteOrigin()
-    local url, records
-    if keyword ~= "" then
-        local encoded = lime.crypto.urlEncode(keyword)
-        if not encoded then error("搜索词编码失败") end
-        url = origin .. "/search.html?q=" .. encoded .. "&f=_all&p=" .. page
-        local doc = lime.dom.parse(httpGet(url))
-        if not lime.dom.select(doc, ".list-group") then error("未找到搜索结果列表") end
-        local current = tonumber(selectText(doc, ".layui-laypage-curr em:last-child"))
-        if current and current < page then return { records = {} } end
-        records = parseSearchResources(doc, url)
-    else
-        local section, child = selection(filters)
-        local order = "update_time"
-        for _, option in ipairs(SORTS) do
-            if filters.sort == option.field then order = option.field break end
-        end
-        local suffix = page > 1 and "?page=" .. page or ""
-        if section == "home" then
-            if page > 1 then return { records = {} } end
-            url = origin .. "/"
-            records = parseHome(lime.dom.parse(httpGet(url)), url)
-            if #records == 0 then error("未找到首页书籍") end
-        elseif section == "shelf" then
-            records = shelf(origin, origin .. "/user/bookshelf/index.html" .. suffix, page)
-            sortRecords(records, order)
-        else
-            local isRank = section == "rank"
-            if isRank then
-                if page > 1 then return { records = {} } end
-                url = origin .. "/other/rank_hits/order/" .. child .. ".html"
-            elseif section == "original" then
-                url = origin .. "/original.html" .. suffix
-            else
-                local group = section == "category" and "/id/" .. child or ""
-                url = origin .. "/all" .. group .. "/order/" .. order .. "+desc.html" .. suffix
-            end
-            records = listRecords(lime.dom.parse(httpGet(url, isRank)), page, url)
-            if not records then error("未找到发现列表") end
-            if isRank or section == "original" then sortRecords(records, order) end
-        end
-    end
+local function normalizeRecords(records)
     -- 资源身份不随所选镜像变化；内部排序字段不透出。
     for _, record in ipairs(records) do
         record.id = SITES[1] .. resourcePath(record.url)
         record.hits = nil
     end
     return { records = records }
+end
+
+local function search(query)
+    local keyword = trim(query and query.keyword)
+    local page = query and query.page or 1
+    local origin = siteOrigin()
+    local encoded = lime.crypto.urlEncode(keyword)
+    if not encoded then error("搜索词编码失败") end
+    local url = origin .. "/search.html?q=" .. encoded .. "&f=_all&p=" .. page
+    local doc = lime.dom.parse(httpGet(url))
+    if not lime.dom.select(doc, ".list-group") then error("未找到搜索结果列表") end
+    local current = tonumber(selectText(doc, ".layui-laypage-curr em:last-child"))
+    if current and current < page then return { records = {} } end
+    return normalizeRecords(parseSearchResources(doc, url))
+end
+
+local function browse(query)
+    local filters = query and query.filters or {}
+    local page = query and query.page or 1
+    local origin = siteOrigin()
+    local section, child = selection(filters)
+    local order = "update_time"
+    for _, option in ipairs(SORTS) do
+        if filters.sort == option.field then order = option.field break end
+    end
+    local suffix = page > 1 and "?page=" .. page or ""
+    local url, records
+    if section == "home" then
+        if page > 1 then return { records = {} } end
+        url = origin .. "/"
+        records = parseHome(lime.dom.parse(httpGet(url)), url)
+        if #records == 0 then error("未找到首页书籍") end
+    elseif section == "shelf" then
+        records = shelf(origin, origin .. "/user/bookshelf/index.html" .. suffix, page)
+        sortRecords(records, order)
+    else
+        local isRank = section == "rank"
+        if isRank then
+            if page > 1 then return { records = {} } end
+            url = origin .. "/other/rank_hits/order/" .. child .. ".html"
+        elseif section == "original" then
+            url = origin .. "/original.html" .. suffix
+        else
+            local group = section == "category" and "/id/" .. child or ""
+            url = origin .. "/all" .. group .. "/order/" .. order .. "+desc.html" .. suffix
+        end
+        records = listRecords(lime.dom.parse(httpGet(url, isRank)), page, url)
+        if not records then error("未找到发现列表") end
+        if isRank or section == "original" then sortRecords(records, order) end
+    end
+    return normalizeRecords(records)
 end
 
 local function settings()
@@ -627,14 +643,16 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用", durationMs = lime.time.unix_ms() - started }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "地铁", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "地铁", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo({ resource = records[1] }) end)
     catalog = run("chapterList", function() return chapterList({ resource = info }) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
     run("explore", function()
-        if #search({ page = 1 }).records == 0 then error("发现首页无结果") end
-        if #search({ page = 1, filters = { category = { "category", "71" } } }).records == 0 then error("发现科幻分类无结果") end
+        local schema = exploreSchema({})
+        if not schema or type(schema.filters) ~= "table" then error("发现结构无效") end
+        if #browse({ page = 1 }).records == 0 then error("发现首页无结果") end
+        if #browse({ page = 1, filters = { category = { "category", "71" } } }).records == 0 then error("发现科幻分类无结果") end
     end)
     return results
 end
@@ -648,7 +666,8 @@ return {
         content = "novel",
         search = search, resourceInfo = resourceInfo,
         chapterList = chapterList, chapterContent = chapterContent,
-        explore = explore,
+        explore = browse,
+        exploreSchema = exploreSchema,
     },
     hooks = { test = test, settings = { list = settings, action = saveSite } },
 }

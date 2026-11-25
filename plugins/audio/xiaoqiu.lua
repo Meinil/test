@@ -271,7 +271,7 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "周杰伦", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "周杰伦", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end

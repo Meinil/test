@@ -600,47 +600,52 @@ local function chapterContent(request)
 end
 
 -- =====================================================================
--- 探索页筛选声明 explore() — 可选
--- 返回 ExploreFilterVO[]:每个 filter 由前端按 type 渲染对应控件
--- (single → shadcn Select / multiple → Checkbox / cascade → 树)
+-- 探索页筛选声明 explore.schema — 可选
+-- 返回 { supportsPagination = bool, filters = ExploreFilterVO[] }
 -- =====================================================================
-local function explore()
+local function exploreSchema()
     -- 直接复用 CATEGORIES 列表展开成 options
     local options = {}
     for _, c in ipairs(CATEGORIES) do
         options[#options + 1] = { field = c.field, label = c.label }
     end
     return {
-        {
-            field = "category",
-            label = "分类",
-            type = "single",
-            default = "0",
-            options = options,
+        supportsPagination = true,
+        filters = {
+            {
+                field = "category",
+                label = "分类",
+                type = "single",
+                default = "0",
+                options = options,
+            },
         },
     }
 end
 
 -- =====================================================================
--- 统一搜索 query = { keyword, filters, page }
--- 返回 { records = ResourceDetailVO[], total? }
--- content 字段可选;前端 fallback 链:book.content ?? plugin.content ?? 'novel'
+-- 普通全局搜索 search({ keyword, page })
 -- =====================================================================
 local function search(query)
     query = query or {}
     local keyword = query.keyword or ""
     local page = query.page or 1
-    if trim(keyword) ~= "" and next(query.filters or {}) == nil then
-        if page > 1 then return { records = {} } end
-        return { records = searchKeyword(keyword) }
-    end
+    if page > 1 then return { records = {} } end
+    return { records = searchKeyword(keyword) }
+end
+
+-- =====================================================================
+-- 发现页浏览 browse({ filters, page })
+-- 返回 { records = ResourceDetailVO[], total? }
+-- =====================================================================
+local function browse(query)
+    query = query or {}
+    local filters = query.filters or {}
+    local page = query.page or 1
     local sortId = "0"
-    if query.filters.category then
-        sortId = tostring(query.filters.category)
+    if filters.category then
+        sortId = tostring(filters.category)
     end
-
-
-    -- keyword:本插件发现页不参与关键字过滤(网站 /sort/ 不支持),直接忽略
 
     local url = BASE .. "/sort/" .. sortId .. "/" .. page .. ".html"
 
@@ -710,12 +715,12 @@ local function test(request)
         results[#results + 1] = { entry = entry, status = "passed", message = "可用" }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "小说", filters = {}, page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
+    records = run("search", function() local value = search({ keyword = "小说", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
     info = run("resourceInfo", function() return resourceInfo(records[1].url) end)
     catalog = run("chapterList", function() return chapterList(info.url) end)
     if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
     run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", explore)
+    run("explore", exploreSchema)
     return results
 end
 
@@ -729,6 +734,12 @@ end
 
 local function searchResources(query)
     local page = search(query)
+    for _, record in ipairs(page.records) do resourceRecord(record) end
+    return page
+end
+
+local function browseResources(query)
+    local page = browse(query)
     for _, record in ipairs(page.records) do resourceRecord(record) end
     return page
 end
@@ -752,7 +763,8 @@ return {
         content = "novel",
         search = searchResources, resourceInfo = describeResource,
         chapterList = listResourceChapters, chapterContent = chapterContent,
-        explore = explore,
+        explore = browseResources,
+        exploreSchema = exploreSchema,
     },
     hooks = { test = test },
 }

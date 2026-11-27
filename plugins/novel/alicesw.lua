@@ -249,6 +249,10 @@ local function bookRecord(book, origin)
         local name = trim(type(tag) == "table" and tag.name or tag)
         if name ~= "" then tags[#tags + 1] = name end
     end
+    local publicationStatus = PUBLICATION_STATUS[book.status]
+    if not publicationStatus and type(book.is_finished) == "boolean" then
+        publicationStatus = book.is_finished and PUBLICATION_STATUS.completed or PUBLICATION_STATUS.published
+    end
     return {
         id = id, url = url, name = name,
         author = author ~= "" and author or nil,
@@ -258,7 +262,7 @@ local function bookRecord(book, origin)
         wordCount = math.tointeger(book.word_count or book.total_words),
         chapterCount = math.tointeger(book.chapter_count or book.total_chapters),
         latestUpdateTime = timestamp(book.last_chapter_at or book.last_chapter_updated_at),
-        publicationStatus = PUBLICATION_STATUS[book.status],
+        publicationStatus = publicationStatus,
     }
 end
 
@@ -294,8 +298,9 @@ local function home(origin)
     return { records = records }
 end
 
-local function booksPage(data, origin, page, shelf)
-    local items = data[shelf and "items" or "books"]
+local function booksPage(data, origin, page, endpoint)
+    local shelf = endpoint == "shelf"
+    local items = data[endpoint and "items" or "books"]
     local totalPages = math.tointeger(data.total_pages)
     local total = math.tointeger(data.total)
     if shelf then
@@ -328,12 +333,29 @@ local function booksPage(data, origin, page, shelf)
     return { records = records, total = total }
 end
 
+-- 有关键词时使用网站的搜索接口，并按入口选择综合或最近更新排序。
+local function searchBooks(origin, page, keyword, filters)
+    local sort = filters and "latest" or "relevance"
+    local parts = { "page=" .. page, "page_size=" .. PAGE_SIZE, "sort=" .. sort, LOCALE }
+    addQuery(parts, "q", keyword)
+    if filters then
+        local category = queryValue(filters.category, CATEGORIES, "all")
+        if category ~= "all" then addQuery(parts, "category_id", category) end
+        local status = queryValue(filters.status, STATUSES, "all")
+        if status ~= "all" then addQuery(parts, "is_finished", status == "completed") end
+        if filters.source == "original" then parts[#parts + 1] = "original=1" end
+    end
+    local url = origin .. "/api/v1/search/books?" .. table.concat(parts, "&")
+    return booksPage(checkedData(get(url)), origin, page, "search")
+end
+
 local function latest(origin, page, keyword, filters)
+    keyword = trim(keyword)
+    if keyword ~= "" then return searchBooks(origin, page, keyword, filters) end
     local parts = {
         "page=" .. page, "page_size=" .. PAGE_SIZE,
         "sort_by=last_chapter_at", "sort_order=desc", LOCALE,
     }
-    addQuery(parts, "q", trim(keyword))
     local category = queryValue(filters.category, CATEGORIES, "all")
     local status = queryValue(filters.status, STATUSES, "all")
     if category ~= "all" then addQuery(parts, "category_id", category) end
@@ -344,7 +366,9 @@ local function latest(origin, page, keyword, filters)
 end
 
 local function search(query)
-    return latest(siteOrigin(), positiveInteger(query.page) or 1, query.keyword, {})
+    local keyword = trim(query.keyword)
+    if keyword == "" then return { records = {}, total = 0 } end
+    return searchBooks(siteOrigin(), positiveInteger(query.page) or 1, keyword)
 end
 
 local function exploreSchema(query)
@@ -408,7 +432,7 @@ local function browse(query)
     addQuery(parts, "q", trim(filters.keyword))
     addQuery(parts, "group_id", positiveInteger(filters.group))
     local url = origin .. "/api/v1/bookshelf?" .. table.concat(parts, "&")
-    local result = booksPage(checkedData(shelfResponse(origin, url)), origin, page, true)
+    local result = booksPage(checkedData(shelfResponse(origin, url)), origin, page, "shelf")
     result.schemaStale = page == 1
     return result
 end
@@ -465,18 +489,25 @@ local function catalogUrl(origin, book)
     return origin .. "/api/v1/books/" .. book.id .. "/chapters?" .. LOCALE
 end
 
-local function detailRecord(origin, resource, book)
+local function resourceInfo(request)
+    local origin = siteOrigin()
+    local resource = request.resource
+    local html = checkedBody(get(resourceUrl(origin, resource)))
+    local book = detailBook(html)
     local record = bookRecord(book, origin)
     if not record then error({ code = 2004, message = "爱丽丝书屋作品详情缺少必要字段" }) end
     record.id = resource.id
     record.tocUrl = catalogUrl(origin, book)
-    return record
-end
 
-local function resourceInfo(request)
-    local origin = siteOrigin()
-    local url = resourceUrl(origin, request.resource)
-    return detailRecord(origin, request.resource, detailBook(checkedBody(get(url))))
+    -- 保留页面展示的计数和单位。
+    local doc = lime.dom.parse(html)
+    local favorites = selectText(doc, 'div[class^="page_stats__"] span[title="加入书架人数"]')
+    local reads = selectText(doc, 'div[class^="page_stats__"] span[title="阅读"]')
+    local meta = {}
+    if favorites ~= "" then meta[#meta + 1] = { label = "收藏", field = favorites } end
+    if reads ~= "" then meta[#meta + 1] = { label = "阅读", field = reads } end
+    if #meta > 0 then record.meta = meta end
+    return record
 end
 
 local function catalog(origin, book)
@@ -620,7 +651,7 @@ end
 
 return {
     kind = "resource", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.1.3", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.1.4", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
     requires = { "browser", "crypto", "dom", "http", "json", "storage", "time" },
     capabilities = {
         content = "novel",

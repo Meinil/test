@@ -1,7 +1,7 @@
 {
   "name": "Lime 测试插件",
   "icon": "https://raw.githubusercontent.com/Meinil/lime-tauri/main/src-tauri/icons/icon.png",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "kind": "plugin",
   "entries": [
     {
@@ -22,7 +22,7 @@
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
-      "hash": "2727f9f1890c26658f3621f362c5c06f995405be609a1ae81e4e93651543af4d"
+      "hash": "d1199e13b0a4d812fa3f8bf1d8dc73e0be2aa499b9acbefc08a359aab037cc45"
     },
     {
       "name": "得奇小说网",

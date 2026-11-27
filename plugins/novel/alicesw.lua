@@ -5,612 +5,565 @@ local SITES = {
     "https://www.alicesw7.homes",
 }
 local SITE_KEY = "site_origin"
-local TZ_OFFSET = 8 * 60 * 60
--- 空 User-Agent 会被上游返回 HTTP 500；已有 WebView Profile 的 UA 仍由宿主优先使用。
+local LOCALE = "zh=hans"
+local PAGE_SIZE = 12
+local SHELF_PAGE_SIZE = 20
+local AGE_RECEIPT_LIFETIME = 365 * 24 * 60 * 60
 local HTTP_HEADERS = { ["User-Agent"] = "Lime" }
+
+local SECTIONS = {
+    { field = "home", label = "网站首页" },
+    { field = "rank", label = "排行榜单" },
+    { field = "latest", label = "最新连载" },
+    { field = "shelf", label = "书架收藏" },
+}
+local RANKS = {
+    { field = "18", label = "热度榜" },
+    { field = "19", label = "新书榜" },
+    { field = "20", label = "飙升榜" },
+    { field = "21", label = "收藏榜" },
+}
+local PERIODS = {
+    { field = "day", label = "日榜" },
+    { field = "week", label = "周榜" },
+    { field = "month", label = "月榜" },
+}
+local CATEGORIES = {
+    { field = "all", label = "全部" },
+    { field = "17", label = "校园" }, { field = "18", label = "玄幻" },
+    { field = "19", label = "乡村" }, { field = "20", label = "都市" },
+    { field = "21", label = "乱伦" }, { field = "22", label = "武侠" },
+    { field = "23", label = "系统" }, { field = "24", label = "穿越" },
+    { field = "25", label = "科幻" }, { field = "27", label = "同人" },
+    { field = "28", label = "奇幻" }, { field = "26", label = "明星" },
+    { field = "7", label = "百合" }, { field = "4", label = "重口" },
+    { field = "5", label = "反差" }, { field = "3", label = "纯爱" },
+    { field = "8", label = "萝莉" }, { field = "9", label = "正太" },
+    { field = "10", label = "伪娘" }, { field = "6", label = "凌辱" },
+    { field = "11", label = "媚黑" }, { field = "12", label = "NTR" },
+    { field = "13", label = "熟女" }, { field = "16", label = "言情" },
+    { field = "15", label = "调教" }, { field = "30", label = "耽美" },
+    { field = "2", label = "堕落" }, { field = "29", label = "经典" },
+    { field = "14", label = "其他" },
+}
+local STATUSES = {
+    { field = "all", label = "全部" },
+    { field = "published", label = "连载中" },
+    { field = "completed", label = "已完结" },
+}
+local SOURCES = {
+    { field = "all", label = "全部" },
+    { field = "original", label = "原创" },
+}
+local PUBLICATION_STATUS = { published = 1, serializing = 1, completed = 2 }
 
 local function siteOrigin()
     local saved = lime.storage.get(SITE_KEY)
     for _, site in ipairs(SITES) do
-        if site == saved then return site end
+        if saved == site then return site end
     end
     return SITES[1]
 end
 
-local RANKS = {
-    { field = "hits", label = "总排行" },
-    { field = "hits_month", label = "月排行" },
-    { field = "hits_week", label = "周排行" },
-    { field = "hits_day", label = "日排行" },
-}
-local CATEGORIES = {
-    { field = "71", label = "科幻" }, { field = "79", label = "经典" },
-    { field = "75", label = "奇幻" }, { field = "69", label = "系统" },
-    { field = "68", label = "武侠" }, { field = "65", label = "乱伦" },
-    { field = "64", label = "都市" }, { field = "63", label = "乡村" },
-    { field = "73", label = "同人" }, { field = "62", label = "玄幻" },
-    { field = "61", label = "校园" }, { field = "70", label = "穿越" },
-    { field = "22", label = "反差" }, { field = "46", label = "凌辱" },
-    { field = "18", label = "堕落" }, { field = "19", label = "纯爱" },
-    { field = "52", label = "伪娘" }, { field = "48", label = "萝莉" },
-    { field = "56", label = "熟女" }, { field = "50", label = "正太" },
-    { field = "72", label = "明星" }, { field = "54", label = "NTR" },
-    { field = "53", label = "媚黑" }, { field = "58", label = "调教" },
-    { field = "59", label = "言情" }, { field = "47", label = "百合" },
-    { field = "82", label = "耽美" }, { field = "21", label = "重口" },
-    { field = "57", label = "其他" },
-}
-local SECTIONS = {
-    { field = "home", label = "首页", children = {{ field = "home", label = "首页" }} },
-    { field = "shelf", label = "书架", children = {{ field = "shelf", label = "书架" }} },
-    { field = "rank", label = "排行", children = RANKS },
-    { field = "original", label = "原创", children = {{ field = "original", label = "原创" }} },
-    { field = "category", label = "分类", children = CATEGORIES },
-    { field = "latest", label = "最新", children = {{ field = "latest", label = "最新更新" }} },
-}
-local SORTS = {
-    { field = "update_time", label = "按更新" },
-    { field = "word", label = "按字数" },
-    { field = "hits", label = "按人气" },
-}
+local function trim(value)
+    return type(value) == "string" and value:match("^%s*(.-)%s*$") or ""
+end
 
--- 只接受声明中存在的完整级联路径；不把用户输入直接拼接进 URL。
-local function selection(filters)
-    local path = filters.category
-    if type(path) == "table" and #path == 2 then
-        for _, section in ipairs(SECTIONS) do
-            if section.field == path[1] then
-                for _, child in ipairs(section.children) do
-                    if child.field == path[2] then return section.field, child.field end
-                end
-            end
-        end
+local function text(node)
+    return node and trim(lime.dom.text(node)) or ""
+end
+
+local function attr(node, name)
+    return node and lime.dom.attr(node, name) or nil
+end
+
+local function selectText(node, selector)
+    return text(lime.dom.select(node, selector))
+end
+
+-- 站内资源跟随当前线路，站外图片保留公开 URL。
+local function absoluteUrl(value, origin)
+    value = trim(value)
+    if value:match("^https?://") then return value end
+    if value:sub(1, 2) == "//" then return "https:" .. value end
+    if value:sub(1, 1) == "/" then return origin .. value end
+end
+
+local function routedNumber(url, route)
+    local path = trim(url):gsub("^https?://[^/]+", ""):match("^[^?#]*")
+    return path:match("^/" .. route .. "/(%d+)/?$")
+end
+
+local function positiveInteger(value)
+    local number = tonumber(value)
+    return number and number > 0 and math.tointeger(number) or nil
+end
+
+local function timestamp(value)
+    -- 接口统一使用 UTC ISO 8601，忽略毫秒。
+    if type(value) ~= "string" then return nil end
+    local date, time = value:match("^(%d%d%d%d%-%d%d%-%d%d)T(%d%d:%d%d:%d%d)[%.%d]*Z$")
+    if not date then return nil end
+    return lime.time.parse_offset("YYYY-MM-dd HH:mm:ss", date .. " " .. time, 0)
+end
+
+local function queryValue(value, options, default)
+    for _, option in ipairs(options) do
+        if value == option.field then return value end
     end
-    return "home", "home"
+    return default
 end
 
-local function trim(s)
-    if not s or s == "" then return "" end
-    s = tostring(s):gsub("^%s+", ""):gsub("%s+$", "")
-    s = s:gsub("^\227\128\128+", ""):gsub("\227\128\128+$", "")
-    s = s:gsub("^\194\160+", ""):gsub("\194\160+$", "")
-    return s
+local function rankPeriods(rank)
+    if rank ~= "21" then return PERIODS, "week" end
+    return { PERIODS[1], PERIODS[2], PERIODS[3], { field = "total", label = "总榜" } }, "total"
 end
 
-local function text(el)
-    return el and trim(lime.dom.text(el) or "") or ""
-end
-
-local function attr(el, key)
-    return el and lime.dom.attr(el, key) or nil
-end
-
-local function subdoc(el)
-    return lime.dom.parse(lime.dom.html(el))
-end
-
-local function selectText(doc, selector)
-    return text(lime.dom.select(doc, selector))
-end
-
-local function selectAttr(doc, selector, key)
-    return attr(lime.dom.select(doc, selector), key)
-end
-
--- 站内资源使用当前线路，站外封面等资源保留原地址。
-local function absolutize(url, base)
-    if not url or url == "" then return "" end
-    if url:match("^https?://") then return url end
-    if url:sub(1, 2) == "//" then return "https:" .. url end
-    if url:sub(1, 1) == "/" then return base:match("^https?://[^/]+") .. url end
-    return (base:match("^(https?://.+)/[^/]*$") or base) .. "/" .. url
-end
-
--- 书籍和章节 URL 的路径在不同线路间相同。
-local function resourcePath(url)
-    return (url:gsub("^https?://[^/]+", ""))
-end
-
--- 站点在浏览器中动态插入年龄弹框，普通 HTTP 响应里只有 iframe 的初始化脚本。
-local function hasAgeGate(html)
-    local doc = lime.dom.parse(html)
-    if lime.dom.select(doc, "iframe#age-gate-iframe[src='/jump/age_gate.html']") then return true end
-    for _, script in ipairs(lime.dom.selectAll(doc, "script:not([src])")) do
-        local source = lime.dom.html(script)
-        if source:find([=[ageGateSrc%s*=%s*['"]/jump/age_gate%.html['"]]=])
-            and source:find([=[iframe%.id%s*=%s*['"]age%-gate%-iframe['"]]=]) then
-            return true
-        end
+local function addQuery(parts, key, value)
+    if value ~= nil and value ~= "" then
+        parts[#parts + 1] = key .. "=" .. lime.crypto.urlEncode(tostring(value))
     end
-    return false
 end
 
--- 只在检测到站点弹框后交给宿主；已完成的同源 Profile 不会重新开窗。
--- 不执行站点脚本、不写入年龄确认值，必须由用户在站点页面操作。
-local function confirmSite(origin)
-    local host = origin:sub(9)
-    lime.browser.open({
-        profile = "consent-" .. host:gsub("%.", "-"), url = origin .. "/", reason = "consent",
-        scopes = {{ scheme = "https", host = host, includeSubdomains = false }},
-        captures = {{ origin = origin .. "/", keys = { "ageVerified" } }},
-        completion = { localStorageValues = { ageVerified = "true" } },
-    })
+local function get(url)
+    return lime.http.get(url, HTTP_HEADERS)
 end
 
 local function checkedBody(response)
-    if response.status < 200 or response.status >= 300 then
-        error({ code = 2006, message = "lime.http.get: HTTP " .. tostring(response.status) })
+    if response.status == 429 then
+        error({ code = 2003, message = "爱丽丝书屋请求过于频繁，请稍后重试" })
     end
-    if hasAgeGate(response.body) then confirmSite(siteOrigin()) end
+    if response.status < 200 or response.status >= 300 then
+        error({ code = 2006, message = "爱丽丝书屋返回 HTTP " .. tostring(response.status) })
+    end
     return response.body
 end
 
-local function httpGet(url, retryRank)
-    local response = lime.http.get(url, HTTP_HEADERS)
-    -- 排行页偶发 HTTP 500 时，只在当前线路重试一次。
-    if retryRank and response.status == 500 then
-        response = lime.http.get(url, HTTP_HEADERS)
-        if response.status == 500 then
-            error({ code = 2006, message = "排行榜返回 HTTP 500，请稍后重试，或在插件设置中手动切换线路" })
+local function checkedData(response)
+    local payload = lime.json.decode(checkedBody(response))
+    if type(payload) ~= "table" then
+        error({ code = 2007, message = "爱丽丝书屋响应格式无效" })
+    end
+    if payload.code ~= nil and payload.code ~= 200 and payload.code ~= 0 then
+        error({ code = 2001, message = "爱丽丝书屋未接受该请求" })
+    end
+    if type(payload.data) ~= "table" then
+        error({ code = 2004, message = "爱丽丝书屋数据结构已变化" })
+    end
+    return payload.data
+end
+
+local function siteScope(origin)
+    return { scheme = "https", host = origin:sub(9), includeSubdomains = false }
+end
+
+local function escapedOrigin(origin)
+    return origin:gsub("%.", "\\.")
+end
+
+-- 阅读时展示站点的年龄提示，由用户在站点确认后点击窗口右上角的完成按钮。
+-- Android 会把不存在的 localStorage 键采集为 null，使用键名自动完成会误关窗口。
+local function confirmAge(origin, url)
+    local scope = siteScope(origin)
+    local profile = "consent-v3-" .. scope.host:gsub("%.", "-")
+    local receiptKey = "age_consent_receipt:" .. scope.host
+    local now = lime.time.unix()
+    local confirmedAt = positiveInteger(lime.storage.get(receiptKey))
+    if confirmedAt and confirmedAt <= now and now - confirmedAt < AGE_RECEIPT_LIFETIME then return end
+    local result = lime.browser.open({
+        profile = profile, url = url, reason = "consent",
+        scopes = { scope },
+    })
+    if result.status ~= 204 then
+        error({ code = 2001, message = "爱丽丝书屋尚未完成年龄确认" })
+    end
+    lime.storage.set(receiptKey, tostring(lime.time.unix()))
+end
+
+-- 宿主负责采集和注入 access token，Lua 只处理接口的登录要求。
+local function login(origin)
+    local scope = siteScope(origin)
+    local profile = "bookshelf-v2-" .. scope.host:gsub("%.", "-")
+    lime.browser.open({
+        profile = profile, url = origin .. "/login?redirect=%2Fbookshelf", reason = "login",
+        scopes = { scope },
+        captures = { { origin = origin .. "/", keys = { "access_token" } } },
+        completion = {
+            mode = "all",
+            urlPatterns = { "^" .. escapedOrigin(origin) .. "/bookshelf(?:[/?#]|$)" },
+            localStorageKeys = { "access_token" },
+        },
+        injections = {{
+            scope = scope, header = "Authorization",
+            storageOrigin = origin .. "/", storageKey = "access_token", prefix = "Bearer ",
+        }},
+    })
+end
+
+local function shelfResponse(origin, url)
+    local response = get(url)
+    if response.status ~= 401 then return response end
+    login(origin)
+    response = get(url)
+    if response.status == 401 then
+        error({ code = 2002, message = "爱丽丝书屋会话已失效，请重新登录后再试" })
+    end
+    return response
+end
+
+local function shelfGroups(origin)
+    local options = {{ field = "all", label = "全部" }}
+    local response = get(origin .. "/api/v1/bookshelf/groups?" .. LOCALE)
+    -- 用户应用书架筛选后才触发登录，登录后的书架结果会刷新筛选项。
+    if response.status < 200 or response.status >= 300 then return options end
+    for _, group in ipairs(checkedData(response)) do
+        local id = positiveInteger(group.id)
+        local name = trim(group.name)
+        if id and name ~= "" then
+            options[#options + 1] = { field = tostring(id), label = name }
         end
     end
-    return checkedBody(response)
+    return options
 end
 
-local function parseCount(value)
-    local s = tostring(value or ""):gsub(",", "")
-    local n = tonumber(s:match("([0-9]+%.?[0-9]*)"))
-    if not n then return 0 end
-    if s:find("万", 1, true) then return math.floor(n * 10000 + 0.5) end
-    return math.floor(n)
+local function recordUrl(origin, bookNo)
+    local path = "/books/" .. bookNo
+    return SITES[1] .. path, origin .. path
 end
 
-local function parseTime(value, fmt)
-    local s = trim(value)
-    if s == "" then return 0 end
-    if not fmt then
-        s = s:match("%d%d%d%d%-%d%d%-%d%d%s+%d%d:%d%d") or ""
-        fmt = "YYYY-MM-dd HH:mm"
-    end
-    return lime.time.parse_offset(fmt, s, TZ_OFFSET) or 0
-end
-
-local function tocUrlFromBookUrl(url)
-    return (url:gsub("/novel/(%d+)%.html$", "/other/chapters/id/%1.html"))
-end
-
-local function htmlToText(html)
-    if not html then return "" end
-    local s = tostring(html)
-        :gsub("<br ?/?>", "\n")
-        :gsub("<[^>]+>", "")
-        :gsub("&emsp;", "    ")
-        :gsub("&nbsp;", " ")
-        :gsub("&amp;", "&")
-        :gsub("&lt;", "<")
-        :gsub("&gt;", ">")
-        :gsub("&quot;", '"')
-        :gsub("&#39;", "'")
-        :gsub("\r", "")
-    return trim(s)
-end
-
-local function resourceFromRankItem(item, baseUrl)
-    local doc = subdoc(item)
-    local titleEl = lime.dom.select(doc, "li.two a")
-    local latestEl = lime.dom.select(doc, "li.three a")
-    local kind = selectText(doc, "li.sev a")
-    local url = absolutize(attr(titleEl, "href"), baseUrl)
-    local latestUrl = absolutize(attr(latestEl, "href"), baseUrl)
-    local latestTime = parseTime(selectText(doc, "li.six"))
-    return {
-        name = text(titleEl),
-        author = selectText(doc, "li.four"),
-        url = url,
-        cover = nil,
-        intro = "",
-        latestChapter = text(latestEl),
-        latestChapterUrl = latestUrl,
-        kind = kind,
-        tags = kind ~= "" and { kind } or {},
-        wordCount = parseCount(selectText(doc, "li.five")),
-        hits = parseCount(selectText(doc, "li.diyhot")),
-        chapterCount = 0,
-        latestUpdateTime = latestTime,
-    }
-end
-
-local function parseRankResources(doc, baseUrl)
-    local items = lime.dom.selectAll(doc, ".rec_rullist > ul")
-    local out = {}
-    for _, item in ipairs(items or {}) do
-        local resource = resourceFromRankItem(item, baseUrl)
-        if resource.name ~= "" and resource.url ~= "" then out[#out + 1] = resource end
-    end
-    return out
-end
-
--- Android WebView 的 UA 会让同一网址返回移动版，而不是桌面排行表。
-local function parseMobileResources(doc, baseUrl)
-    local records = {}
-    for _, item in ipairs(lime.dom.selectAll(doc, ".txt-list-row3 > li")) do
-        local row = subdoc(item)
-        local link = lime.dom.select(row, ".s2 > a[href*='/novel/']")
-        local kindLabel = selectText(row, ".s2 > a > .fenleibt")
-        local kind = trim((kindLabel:gsub("^%[(.-)%]$", "%1")))
-        local name = text(link)
-        if name:sub(1, #kindLabel) == kindLabel then name = trim(name:sub(#kindLabel + 1)) end
-        if name ~= "" then
-            records[#records + 1] = {
-                name = name, url = absolutize(attr(link, "href"), baseUrl),
-                author = selectText(row, ".s5"), kind = kind,
-                tags = kind ~= "" and { kind } or {},
-                wordCount = parseCount(selectText(row, ".five")),
-                hits = parseCount(selectText(row, ".diyhot")),
-                latestUpdateTime = parseTime(selectText(row, ".six")),
-            }
-        end
-    end
-    return records
-end
-
-local function parseSearchResources(doc, baseUrl)
-    local items = lime.dom.selectAll(doc, ".list-group .list-group-item")
-    local out = {}
-    for _, item in ipairs(items or {}) do
-        local sub = subdoc(item)
-        local titleEl = lime.dom.select(sub, "h5 a")
-        local name = text(titleEl):gsub("^%d+%.", "")
-        local url = absolutize(attr(titleEl, "href"), baseUrl)
-        local author = selectText(sub, "p.mb-1.text-muted a")
-        local kind = selectText(sub, "p.text-muted a")
-        local latestTime = parseTime(selectText(sub, "p.mb-1.text-muted"))
-        if name ~= "" and url ~= "" then
-            out[#out + 1] = {
-                name = name,
-                author = author,
-                url = url,
-                cover = nil,
-                intro = selectText(sub, "p.content-txt"),
-                latestChapter = "",
-                latestChapterUrl = "",
-                kind = kind,
-                tags = kind ~= "" and { kind } or {},
-                wordCount = parseCount(selectText(sub, "p.mb-1.text-muted")),
-                chapterCount = 0,
-                latestUpdateTime = latestTime,
-            }
-        end
-    end
-    return out
-end
-
-local function parseStats(doc)
-    local textValue = selectText(doc, "#detail-box .novel_info p:nth-child(4)")
-    if textValue == "" then textValue = selectText(doc, ".novel_info") end
-    local wordText = textValue:match("字%s*数[：:]%s*([^·]+)") or textValue:match("([0-9%.]+%s*万?)%s*字") or ""
-    local chapterText = textValue:match("章%s*节[：:]%s*(%d+)") or ""
-    local chapterCount = tonumber(chapterText) or 0
-    return parseCount(wordText), chapterCount
-end
-
-local function parseDetail(html, url)
-    local doc = lime.dom.parse(html or "")
-    local name = selectText(doc, "#detail-box .novel_info h1")
-    if name == "" then name = selectText(doc, ".detail-box .info h1") end
-    if name == "" then name = selectText(doc, ".box_info > .novel_title") end
-    if name == "" then name = selectAttr(doc, "meta[property='og:novel:book_name']", "content") or "" end
-    local author = selectText(doc, "#detail-box .novel_info a[href*='f=author']")
-    if author == "" then author = selectText(doc, "#detail-box .novel_info p:nth-child(2) a") end
-    if author == "" then author = selectText(doc, ".detail-box .info a[href*='f=author']") end
-    local cover = selectAttr(doc, "#detail-box img", "data-src") or selectAttr(doc, "#detail-box img", "src")
-        or selectAttr(doc, ".detail-box .imgbox img", "src") or ""
-    local intro = selectText(doc, ".jianjie > p")
-    if intro == "" then intro = selectText(doc, "#detail-box .book_intro") end
-    local kind = selectText(doc, "#detail-box .novel_info a[href*='/lists/'], .detail-box .info a[href*='/lists/']")
-    -- 「最新」在书籍信息第六行；下方章节列表还包含「查看所有章节」。
-    local latestEl = lime.dom.select(doc, "#detail-box .novel_info > p:nth-of-type(6) > a[href*='/book/']")
+-- 首页展示条目与 API 书籍都使用公开书号作为跨线路的来源身份。
+local function bookRecord(book, origin)
+    if type(book) ~= "table" then return nil end
+    local bookNo = positiveInteger(book.book_no) or positiveInteger(book.id)
+    local name = trim(book.title)
+    if not bookNo or name == "" then return nil end
+    local id, url = recordUrl(origin, bookNo)
+    local cover = absoluteUrl(book.cover_url, origin)
+    local author = trim(type(book.author) == "table" and book.author.pen_name or book.author_name)
+    -- Next.js 在作品详情的渲染数据里用 "$undefined" 表示未填写的原作者。
+    local originalAuthor = trim(book.original_author)
+    if originalAuthor ~= "" and originalAuthor ~= "$undefined" then author = originalAuthor end
+    if author == "$undefined" then author = "" end
     local tags = {}
-    for _, link in ipairs(lime.dom.selectAll(doc, "#detail-box .box_info > .tags_list a[href*='f=tag']")) do
-        local tag = trim((text(link):gsub("^#", "")))
-        if tag ~= "" then tags[#tags + 1] = tag end
-    end
-    local wordCount, chapterCount = parseStats(doc)
-    local tocUrl = tocUrlFromBookUrl(url)
-    if chapterCount == 0 then
-        local links = lime.dom.selectAll(doc, "ul.mulu_list li a")
-        chapterCount = links and #links or 0
-    end
-    local latestUpdateTime = 0
-    local timeEl = lime.dom.select(doc, "#detail-box > div.book_newchap > div.con > li:nth-child(1) > em")
-    if timeEl then
-        latestUpdateTime = parseTime(lime.dom.text(timeEl), "更新时间：YYYY-MM-dd HH:mm")
+    for _, tag in ipairs(book.tags or {}) do
+        local name = trim(type(tag) == "table" and tag.name or tag)
+        if name ~= "" then tags[#tags + 1] = name end
     end
     return {
-        name = name,
-        author = author,
-        url = url,
-        cover = absolutize(cover, url) ~= "" and { url = absolutize(cover, url) } or nil,
-        intro = intro,
-        latestChapter = text(latestEl),
-        latestChapterUrl = absolutize(attr(latestEl, "href"), url),
-        kind = kind,
+        id = id, url = url, name = name,
+        author = author ~= "" and author or nil,
+        cover = cover and { url = cover } or nil,
+        intro = trim(book.synopsis or book.summary),
         tags = tags,
-        tocUrl = tocUrl,
-        wordCount = wordCount,
-        chapterCount = chapterCount,
-        latestUpdateTime = latestUpdateTime,
+        wordCount = math.tointeger(book.word_count or book.total_words),
+        chapterCount = math.tointeger(book.chapter_count or book.total_chapters),
+        latestUpdateTime = timestamp(book.last_chapter_at or book.last_chapter_updated_at),
+        publicationStatus = PUBLICATION_STATUS[book.status],
     }
 end
 
-local function resourceInfo(request)
-    local url = absolutize(resourcePath(request.resource.url), siteOrigin())
-    local record = parseDetail(httpGet(url), url)
-    record.id = request.resource.id
+local function home(origin)
+    local doc = lime.dom.parse(checkedBody(get(origin .. "/")))
+    local records, byId = {}, {}
+    local selector = "a.book-card[href^='/books/'], a.book-feature__link[href^='/books/'], .rank-preview a[href^='/books/']"
+    for _, card in ipairs(lime.dom.selectAll(doc, selector)) do
+        local bookNo = routedNumber(attr(card, "href"), "books")
+        local name = selectText(card, "h3")
+        if bookNo and name ~= "" then
+            local id, url = recordUrl(origin, bookNo)
+            local record = byId[id]
+            if not record then
+                record = { id = id, url = url, name = name }
+                byId[id] = record
+                records[#records + 1] = record
+            end
+            local cover = absoluteUrl(attr(lime.dom.select(card, "img"), "src"), origin)
+            if cover and not record.cover then record.cover = { url = cover } end
+            if not record.author then
+                local author = selectText(card, ".book-feature__author, p.text-text-muted")
+                author = trim(author:gsub("^作者%s*：", ""):gsub("^作者%s*:", ""):gsub("%s*·.*$", ""))
+                if author ~= "" then record.author = author end
+            end
+            if not record.intro then
+                local intro = selectText(card, ".book-feature__summary")
+                if intro ~= "" then record.intro = intro end
+            end
+        end
+    end
+    if #records == 0 then error({ code = 2004, message = "未找到爱丽丝书屋首页作品" }) end
+    return { records = records }
+end
+
+local function booksPage(data, origin, page, shelf)
+    local items = data[shelf and "items" or "books"]
+    local totalPages = math.tointeger(data.total_pages)
+    local total = math.tointeger(data.total)
+    if shelf then
+        -- 书架接口单独返回分页对象，空书架的 items 可能为 null。
+        local pagination = data.pagination
+        totalPages = type(pagination) == "table" and math.tointeger(pagination.total_pages)
+        total = type(pagination) == "table" and math.tointeger(pagination.total_count)
+        if items == nil then items = {} end
+    end
+    if type(items) ~= "table" or not totalPages or totalPages < 0 or not total or total < 0 then
+        error({ code = 2004, message = "爱丽丝书屋分页结构已变化" })
+    end
+    if page > totalPages then return { records = {}, total = total } end
+    local records = {}
+    for _, item in ipairs(items) do
+        local book = item
+        if shelf and type(item) == "table" then
+            book = {
+                id = item.book_id, book_no = item.book_no, title = item.book_title,
+                author_name = item.book_author, cover_url = item.book_cover_url,
+                status = item.book_status, chapter_count = item.chapter_count,
+            }
+        end
+        local record = bookRecord(book, origin)
+        if record then records[#records + 1] = record end
+    end
+    if #items > 0 and #records == 0 then
+        error({ code = 2004, message = "未找到有效的爱丽丝书屋作品记录" })
+    end
+    return { records = records, total = total }
+end
+
+local function latest(origin, page, keyword, filters)
+    local parts = {
+        "page=" .. page, "page_size=" .. PAGE_SIZE,
+        "sort_by=last_chapter_at", "sort_order=desc", LOCALE,
+    }
+    addQuery(parts, "q", trim(keyword))
+    local category = queryValue(filters.category, CATEGORIES, "all")
+    local status = queryValue(filters.status, STATUSES, "all")
+    if category ~= "all" then addQuery(parts, "category_id", category) end
+    if status ~= "all" then addQuery(parts, "status", status) end
+    if filters.source == "original" then parts[#parts + 1] = "is_original=true" end
+    local url = origin .. "/api/v1/books?" .. table.concat(parts, "&")
+    return booksPage(checkedData(get(url)), origin, page)
+end
+
+local function search(query)
+    return latest(siteOrigin(), positiveInteger(query.page) or 1, query.keyword, {})
+end
+
+local function exploreSchema(query)
+    local filters = query.filters or {}
+    local section = queryValue(filters.section, SECTIONS, "home")
+    local schema = {{
+        field = "section", label = "栏目", type = "single",
+        default = "home", options = SECTIONS, reloadOnChange = true,
+    }}
+    local resolved
+    if section == "rank" then
+        local rank = queryValue(filters.rank, RANKS, "18")
+        local periods, default = rankPeriods(rank)
+        schema[#schema + 1] = {
+            field = "rank", label = "榜单", type = "single",
+            default = "18", options = RANKS, reloadOnChange = true,
+        }
+        schema[#schema + 1] = {
+            field = "period", label = "周期", type = "single",
+            default = default, options = periods,
+        }
+        resolved = { rank = rank, period = queryValue(filters.period, periods, default) }
+    elseif section == "latest" then
+        schema[#schema + 1] = { field = "status", label = "状态", type = "single", default = "all", options = STATUSES }
+        schema[#schema + 1] = { field = "source", label = "来源", type = "single", default = "all", options = SOURCES }
+    elseif section == "shelf" then
+        schema[#schema + 1] = {
+            field = "group", label = "分组", type = "single", default = "all", options = shelfGroups(siteOrigin()),
+        }
+    end
+    if section == "rank" or section == "latest" then
+        schema[#schema + 1] = { field = "category", label = "分类", type = "single", default = "all", options = CATEGORIES }
+    end
+    if section == "latest" or section == "shelf" then
+        schema[#schema + 1] = { field = "keyword", label = "搜索", type = "text", default = "" }
+    end
+    return { supportsPagination = section ~= "home", filters = schema, resolvedFilters = resolved }
+end
+
+local function browse(query)
+    local origin = siteOrigin()
+    local page = positiveInteger(query.page) or 1
+    local filters = query.filters or {}
+    local section = queryValue(filters.section, SECTIONS, "home")
+    if section == "home" then
+        if page > 1 then return { records = {} } end
+        return home(origin)
+    end
+    if section == "latest" then return latest(origin, page, filters.keyword, filters) end
+    if section == "rank" then
+        local rank = queryValue(filters.rank, RANKS, "18")
+        local periods, default = rankPeriods(rank)
+        local period = queryValue(filters.period, periods, default)
+        local parts = { "page=" .. page, "page_size=" .. PAGE_SIZE, "period=" .. period, LOCALE }
+        local category = queryValue(filters.category, CATEGORIES, "all")
+        if category ~= "all" then addQuery(parts, "category_id", category) end
+        local url = origin .. "/api/v1/operations/blocks/" .. rank .. "/books?" .. table.concat(parts, "&")
+        return booksPage(checkedData(get(url)), origin, page)
+    end
+    local parts = { "page=" .. page, "page_size=" .. SHELF_PAGE_SIZE, LOCALE }
+    addQuery(parts, "q", trim(filters.keyword))
+    addQuery(parts, "group_id", positiveInteger(filters.group))
+    local url = origin .. "/api/v1/bookshelf?" .. table.concat(parts, "&")
+    local result = booksPage(checkedData(shelfResponse(origin, url)), origin, page, true)
+    result.schemaStale = page == 1
+    return result
+end
+
+-- 从服务端渲染的 Next.js 数据中读取一段 JSON 对象，只解码数据。
+local function jsonObjectAt(source, start)
+    if source:sub(start, start) ~= "{" then return nil end
+    local depth, quoted = 0, false
+    local cursor = start
+    while true do
+        local at = source:find('[{}"\\]', cursor)
+        if not at then return nil end
+        local char = source:sub(at, at)
+        cursor = at + 1
+        if char == '"' then
+            quoted = not quoted
+        elseif quoted then
+            if char == "\\" then cursor = cursor + 1 end
+        else
+            if char == "{" then depth = depth + 1 end
+            if char == "}" then
+                depth = depth - 1
+                if depth == 0 then return lime.json.decode(source:sub(start, at)) end
+            end
+        end
+    end
+end
+
+local function detailBook(html)
+    local stream = {}
+    for segment in html:gmatch("self%.__next_f%.push%((%[.-%])%)</script>") do
+        if segment:match("^%[1,") then
+            local data = lime.json.decode(segment)
+            if type(data[2]) == "string" then stream[#stream + 1] = data[2] end
+        end
+    end
+    local source = table.concat(stream)
+    local start = source:match('"initialBook"%s*:%s*()')
+    local book = start and jsonObjectAt(source, start)
+    if not book or not positiveInteger(book.id) then
+        error({ code = 2004, message = "未找到爱丽丝书屋作品数据" })
+    end
+    return book
+end
+
+local function resourceUrl(origin, resource)
+    local bookNo = routedNumber(resource.url, "books")
+    if not bookNo then error({ code = 2005, message = "爱丽丝书屋作品地址格式无效" }) end
+    return origin .. "/books/" .. bookNo
+end
+
+local function catalogUrl(origin, book)
+    -- 公开书号用于网页地址，章节接口要求内部作品 ID。
+    return origin .. "/api/v1/books/" .. book.id .. "/chapters?" .. LOCALE
+end
+
+local function detailRecord(origin, resource, book)
+    local record = bookRecord(book, origin)
+    if not record then error({ code = 2004, message = "爱丽丝书屋作品详情缺少必要字段" }) end
+    record.id = resource.id
+    record.tocUrl = catalogUrl(origin, book)
     return record
 end
 
-local function chapterList(request)
-    local fullUrl = tocUrlFromBookUrl(absolutize(resourcePath(request.resource.url), siteOrigin()))
-    local html = httpGet(fullUrl)
-    local doc = lime.dom.parse(html)
-    local selector = "ul.mulu_list"
-    if not lime.dom.select(doc, selector) then selector = ".section-box > ul.section-list" end
-    if not lime.dom.select(doc, selector) then error("未找到章节目录") end
-    local links = lime.dom.selectAll(doc, selector .. " li a[href*='/book/']")
-    local chapters = {}
-    local seen = {}
-    for _, link in ipairs(links or {}) do
-        local url = absolutize(attr(link, "href"), fullUrl)
-        local name = text(link)
-        if name ~= "" and url ~= "" and not seen[url] then
-            seen[url] = true
-            chapters[#chapters + 1] = { id = SITES[1] .. resourcePath(url), name = name, url = url, index = #chapters + 1 }
+local function resourceInfo(request)
+    local origin = siteOrigin()
+    local url = resourceUrl(origin, request.resource)
+    return detailRecord(origin, request.resource, detailBook(checkedBody(get(url))))
+end
+
+local function catalog(origin, book)
+    local data = checkedData(get(catalogUrl(origin, book)))
+    local chapters, seen = {}, {}
+    for _, item in ipairs(data) do
+        local chapterNo = positiveInteger(item.chapter_no)
+        local name = trim(item.display_title)
+        if name == "" then name = trim(item.title) end
+        if chapterNo and name ~= "" and not seen[chapterNo] then
+            seen[chapterNo] = true
+            local path = "/read/" .. chapterNo
+            chapters[#chapters + 1] = {
+                id = SITES[1] .. path, url = origin .. path, name = name,
+                index = #chapters + 1, chapterUpdateTime = timestamp(item.published_at),
+            }
         end
+    end
+    if #chapters == 0 and (book.total_chapters or 0) > 0 then
+        error({ code = 2004, message = "未找到爱丽丝书屋章节目录" })
     end
     return { chapters = chapters }
 end
 
-local function chapterContent(request)
-    local fullUrl = absolutize(resourcePath(request.chapter.url), siteOrigin())
-    local html = httpGet(fullUrl)
-    local doc = lime.dom.parse(html)
-    local contentSelector = ".read-content, #chapterContent .jsChapterWrapper .content_txt"
-    local contentEl = lime.dom.select(doc, contentSelector)
-    local paragraphs = contentEl and lime.dom.selectAll(subdoc(contentEl), "p") or {}
-    local chunks = {}
-    for _, p in ipairs(paragraphs or {}) do
-        local value = text(p)
-        if value ~= "" then chunks[#chunks + 1] = value end
-    end
-    if #chunks == 0 then
-        if contentEl then chunks[#chunks + 1] = htmlToText(lime.dom.html(contentEl)) end
-    end
-    local blocks = {}
-    for para in table.concat(chunks, "\n"):gmatch("[^\n]+") do
-        para = trim(para)
-        if para ~= "" then
-            blocks[#blocks + 1] = { id = "text-" .. (#blocks + 1), type = "text", text = para }
+local function chapterList(request)
+    local origin = siteOrigin()
+    local url = resourceUrl(origin, request.resource)
+    return catalog(origin, detailBook(checkedBody(get(url))))
+end
+
+local function chapterBlocks(origin, chapterNo, allowLogin)
+    local url = origin .. "/api/v1/chapters/" .. chapterNo .. "?" .. LOCALE
+    local response = get(url)
+    if allowLogin and response.status == 401 then
+        local ok, payload = pcall(lime.json.decode, response.body)
+        if ok and type(payload) == "table" and payload.code == "GUEST_LOGIN_REQUIRED" then
+            login(origin)
+            response = get(url)
         end
     end
-    if #blocks == 0 then error("章节内容为空") end
+    local data = checkedData(response)
+    if data.can_read ~= true then
+        error({ code = 2006, message = "爱丽丝书屋未开放该章的阅读权限，请在站点查看" })
+    end
+    local content = trim(data.content)
+    local blocks = {}
+    local function appendText(value)
+        if value ~= "" then
+            blocks[#blocks + 1] = { id = "text-" .. (#blocks + 1), type = "text", text = value }
+        end
+    end
+    -- 接口正文为纯文本或 HTML。发给宿主的只有文本和图片块。
+    local tag = content:lower():match("^<([%w]+)[%s/>]")
+    local htmlTags = { p = true, div = true, blockquote = true, ul = true, ol = true,
+        h1 = true, h2 = true, h3 = true, h4 = true, h5 = true, h6 = true,
+        pre = true, figure = true, hr = true, img = true }
+    if htmlTags[tag] then
+        local doc = lime.dom.parse(content)
+        local function appendImage(image)
+            local imageUrl = absoluteUrl(attr(image, "src"), origin)
+            if imageUrl then
+                local id = "image-" .. (#blocks + 1)
+                blocks[#blocks + 1] = { id = id, type = "image", source = { id = id, url = imageUrl } }
+            end
+        end
+        for _, paragraph in ipairs(lime.dom.selectAll(doc, "body > :not(script, style)")) do
+            if lime.dom.tag(paragraph) == "img" then
+                appendImage(paragraph)
+            else
+                appendText(text(paragraph))
+                for _, image in ipairs(lime.dom.selectAll(paragraph, "img")) do appendImage(image) end
+            end
+        end
+    else
+        for line in content:gmatch("[^\r\n]+") do appendText(trim(line)) end
+    end
+    if #blocks == 0 then error({ code = 2007, message = "爱丽丝书屋章节正文为空" }) end
     return { blocks = blocks }
 end
 
--- 首页更新榜只显示月日和时分，按站点时区补上最近一次出现的年份。
-local function parseHomeTime(value, now)
-    if not value:match("^%d%d%-%d%d %d%d:%d%d$") then
-        local timestamp = parseTime(value)
-        return timestamp > 0 and timestamp or nil
-    end
-    local year = 1970 + math.floor((now + TZ_OFFSET) / 31557600)
-    local function timestamp(y, date)
-        return lime.time.parse_offset("YYYY-MM-dd HH:mm", y .. "-" .. date, TZ_OFFSET)
-    end
-    -- 用实际元旦校正平均年长度在跨年时的偏差。
-    if timestamp(year, "01-01 00:00") > now then
-        year = year - 1
-    elseif timestamp(year + 1, "01-01 00:00") <= now then
-        year = year + 1
-    end
-    local updated = timestamp(year, value)
-    if updated and updated > now then updated = timestamp(year - 1, value) end
-    return updated
-end
-
--- 首页按书籍卡片/行提取；重复书目用后续板块补齐缺失字段，但保留首次出现的位置。
-local function parseHome(doc, url)
-    local records, byPath = {}, {}
-    local selector = ".class-img, .hot-img, .class-box li, .item-list li, .item-index li"
-        .. ", .layout .title_author, .layout .listx .topred"
-    local now = lime.time.unix()
-    for _, row in ipairs(lime.dom.selectAll(doc, selector)) do
-        local link = lime.dom.select(row, "h5 a, a.ellipsis, a.book-list-f, a.ititle, a.titles")
-            or lime.dom.select(row, "a[href*='/novel/']:not(.jianjie)")
-        local path = resourcePath(attr(link, "href") or "")
-        local name = text(link)
-        if path:match("^/novel/%d+%.html$") and name ~= "" then
-            local record = byPath[path]
-            if not record then
-                record = { name = name, url = absolutize(path, url) }
-                records[#records + 1], byPath[path] = record, record
-            end
-            if not record.author then
-                local author = selectText(row, ".author, .s5")
-                if author == "" then
-                    -- 桌面推荐卡片把作者直接写在标题与简介之间，没有单独的元素。
-                    local label = lime.dom.html(row):match("</h5>%s*([^<]+)")
-                    if label and (label:match("^作者：") or label:match("^作者:")) then
-                        author = selectText(lime.dom.parse("<span>" .. label .. "</span>"), "span")
-                    end
-                end
-                author = trim((author:gsub("^作者：", ""):gsub("^作者:", "")))
-                author = trim((author:gsub("^/", ""):gsub("^／", "")))
-                if author ~= "" then record.author = author end
-            end
-            if not record.latestChapter then
-                local chapter = lime.dom.select(row, "a.zjie")
-                local title = text(chapter)
-                if title ~= "" then
-                    record.latestChapter = title
-                    local href = attr(chapter, "href")
-                    if href and href ~= "" then record.latestChapterUrl = absolutize(href, url) end
-                end
-            end
-            if not record.latestUpdateTime then
-                local date = selectText(row, ".time")
-                if date ~= "" then record.latestUpdateTime = parseHomeTime(date, now) end
-            end
-        end
-    end
-    return records
-end
-
--- 原创、书架和排行榜没有全站排序接口；对站点返回的当前列表稳定排序。
-local function sortRecords(records, order)
-    local field = ({ update_time = "latestUpdateTime", word = "wordCount", hits = "hits" })[order]
-    local index = {}
-    for i, record in ipairs(records) do index[record] = i end
-    table.sort(records, function(a, b)
-        local left, right = a[field] or 0, b[field] or 0
-        if left ~= right then return left > right end
-        return index[a] < index[b]
-    end)
-end
-
-local function listRecords(doc, page, url)
-    local desktop = lime.dom.select(doc, ".rec_rullist")
-    if not desktop and not lime.dom.select(doc, ".txt-list-row3") then return nil end
-    local current = tonumber(selectText(doc, ".pagination li.active span, .pages_bottom .pager li.active span"))
-    if current and current < page then return {} end
-    return desktop and parseRankResources(doc, url) or parseMobileResources(doc, url)
-end
-
-local function needsShelfLogin(response)
-    if response.status == 401 or response.status == 403 then return true end
-    return response.status == 200
-        and lime.dom.select(lime.dom.parse(response.body), "form input[name='password']") ~= nil
-end
-
--- 先探测真实书架；只在未登录时打开受控 WebView，在同源环境重试书架请求。
-local function shelf(origin, url, page)
-    local response = lime.http.get(url, HTTP_HEADERS)
-    if needsShelfLogin(response) then
-        local host = origin:sub(9)
-        response = lime.browser.open({
-            profile = "bookshelf-" .. host:gsub("%.", "-"),
-            url = origin .. "/user/user/login.html", reason = "login",
-            scopes = {{ scheme = "https", host = host, includeSubdomains = false }},
-            completion = { urlPatterns = { "/user/(?:index|bookshelf)/" } },
-            request = { method = "GET", url = url },
-        })
-        if needsShelfLogin(response) then error("尚未登录爱丽丝书屋，无法查看书架") end
-    end
-    local doc = lime.dom.parse(checkedBody(response))
-    local records = listRecords(doc, page, url)
-    if records then return records end
-    -- 书架也可能用用户中心的表格/卡片模板；每本书只保留一个标题。
-    local current = tonumber(selectText(doc, ".pagination li.active span, .pages_bottom .pager li.active span"))
-    if current and current < page then return {} end
-    local seen = {}
-    records = {}
-    local function add(link, row, container)
-        local path = resourcePath(attr(link, "href") or "")
-        local name = text(link)
-        if not path:match("^/novel/%d+%.html$") or name == "" or seen[path] then return end
-        seen[path] = true
-        records[#records + 1] = {
-            name = name, url = absolutize(path, url),
-            latestUpdateTime = row and parseTime(attr(row, "data-update-time") or selectText(container, ".update-time, .six")) or nil,
-            wordCount = row and parseCount(attr(row, "data-words") or selectText(container, ".word-count, .five")) or nil,
-            hits = row and parseCount(attr(row, "data-hits") or selectText(container, ".hits, .diyhot")) or nil,
-        }
-    end
-    for _, row in ipairs(lime.dom.selectAll(doc, "tr, .bookshelf-item")) do
-        -- 单独解析 tr 会让 HTML 解析器丢弃 td，补上表格上下文。
-        local container = lime.dom.tag(row) == "tr"
-            and lime.dom.parse("<table>" .. lime.dom.html(row) .. "</table>") or row
-        add(lime.dom.select(container, "a[href*='/novel/']"), row, container)
-    end
-    for _, link in ipairs(lime.dom.selectAll(doc, "a[href*='/novel/']")) do add(link) end
-    return records
-end
-
-local function exploreSchema(query)
-    local section = selection(query and query.filters or {})
-    local sections = { field = "category", label = "分类", type = "cascade",
-        default = { "home", "home" }, options = SECTIONS, reloadOnChange = true }
-    local supportsPagination = section ~= "home" and section ~= "rank"
-    if section == "home" then
-        return { supportsPagination = supportsPagination, filters = { sections } }
-    end
-    return {
-        supportsPagination = supportsPagination,
-        filters = {
-            sections,
-            { field = "sort", label = "排序", type = "single", default = "update_time", options = SORTS },
-        },
-    }
-end
-
-local function normalizeRecords(records)
-    -- 资源身份不随所选镜像变化；内部排序字段不透出。
-    for _, record in ipairs(records) do
-        record.id = SITES[1] .. resourcePath(record.url)
-        record.hits = nil
-    end
-    return { records = records }
-end
-
-local function search(query)
-    local keyword = trim(query and query.keyword)
-    local page = query and query.page or 1
+local function chapterContent(request)
     local origin = siteOrigin()
-    local encoded = lime.crypto.urlEncode(keyword)
-    if not encoded then error("搜索词编码失败") end
-    local url = origin .. "/search.html?q=" .. encoded .. "&f=_all&p=" .. page
-    local doc = lime.dom.parse(httpGet(url))
-    if not lime.dom.select(doc, ".list-group") then error("未找到搜索结果列表") end
-    local current = tonumber(selectText(doc, ".layui-laypage-curr em:last-child"))
-    if current and current < page then return { records = {} } end
-    return normalizeRecords(parseSearchResources(doc, url))
-end
-
-local function browse(query)
-    local filters = query and query.filters or {}
-    local page = query and query.page or 1
-    local origin = siteOrigin()
-    local section, child = selection(filters)
-    local order = "update_time"
-    for _, option in ipairs(SORTS) do
-        if filters.sort == option.field then order = option.field break end
-    end
-    local suffix = page > 1 and "?page=" .. page or ""
-    local url, records
-    if section == "home" then
-        if page > 1 then return { records = {} } end
-        url = origin .. "/"
-        records = parseHome(lime.dom.parse(httpGet(url)), url)
-        if #records == 0 then error("未找到首页书籍") end
-    elseif section == "shelf" then
-        records = shelf(origin, origin .. "/user/bookshelf/index.html" .. suffix, page)
-        sortRecords(records, order)
-    else
-        local isRank = section == "rank"
-        if isRank then
-            if page > 1 then return { records = {} } end
-            url = origin .. "/other/rank_hits/order/" .. child .. ".html"
-        elseif section == "original" then
-            url = origin .. "/original.html" .. suffix
-        else
-            local group = section == "category" and "/id/" .. child or ""
-            url = origin .. "/all" .. group .. "/order/" .. order .. "+desc.html" .. suffix
-        end
-        records = listRecords(lime.dom.parse(httpGet(url, isRank)), page, url)
-        if not records then error("未找到发现列表") end
-        if isRank or section == "original" then sortRecords(records, order) end
-    end
-    return normalizeRecords(records)
+    local chapterNo = routedNumber(request.chapter.url, "read")
+    if not chapterNo then error({ code = 2005, message = "爱丽丝书屋章节地址格式无效" }) end
+    local url = origin .. "/read/" .. chapterNo
+    confirmAge(origin, url)
+    return chapterBlocks(origin, chapterNo, true)
 end
 
 local function settings()
@@ -632,42 +585,48 @@ local function saveSite(request)
             end
         end
     end
-    error("无效的线路设置")
+    error({ code = 2005, message = "无效的线路设置" })
 end
 
-local function test(request)
-    local results, records, info, catalog = {}, nil, nil, nil
+-- 检测只校验公开样本的响应结构，不展示正文或启动 WebView。
+local function test()
+    local origin = siteOrigin()
+    local results = {}
     local function run(entry, fn)
         local started = lime.time.unix_ms()
         local value = fn()
         results[#results + 1] = { entry = entry, status = "passed", message = "可用", durationMs = lime.time.unix_ms() - started }
         return value
     end
-    records = run("search", function() local value = search({ keyword = "地铁", page = 1 }).records; if #value == 0 then error("搜索无结果") end; return value end)
-    info = run("resourceInfo", function() return resourceInfo({ resource = records[1] }) end)
-    catalog = run("chapterList", function() return chapterList({ resource = info }) end)
-    if not catalog.chapters or not catalog.chapters[1] then error("目录没有可检测的章节") end
-    run("chapterContent", function() return chapterContent({ resource = { url = info.url }, chapter = catalog.chapters[1] }) end)
-    run("explore", function()
-        local schema = exploreSchema({})
-        if not schema or type(schema.filters) ~= "table" then error("发现结构无效") end
-        if #browse({ page = 1 }).records == 0 then error("发现首页无结果") end
-        if #browse({ page = 1, filters = { category = { "category", "71" } } }).records == 0 then error("发现科幻分类无结果") end
+    local record = run("search", function()
+        local item = search({ keyword = "玄幻", page = 1 }).records[1]
+        if not item then error({ code = 2007, message = "爱丽丝书屋搜索没有返回样本" }) end
+        return item
     end)
+    local book = run("resourceInfo", function()
+        return detailBook(checkedBody(get(record.url)))
+    end)
+    local firstChapter = run("chapterList", function()
+        local chapter = catalog(origin, book).chapters[1]
+        if not chapter then
+            error({ code = 2007, message = "爱丽丝书屋检测样本没有章节" })
+        end
+        return chapter
+    end)
+    run("chapterContent", function() chapterBlocks(origin, routedNumber(firstChapter.url, "read")) end)
+    run("explore", function() home(origin) end)
     return results
 end
 
 return {
     kind = "resource", apiVersion = 1,
-    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.0.9", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
-    requires = { "browser", "crypto", "dom", "http", "log", "storage", "time" },
-
+    manifest = { name = "爱丽丝书屋", package = "com.meinil.lime.ai.alicesw", version = "0.1.3", author = "ai", description = "国内发布页：https://www.asw2.cc/", homepage = SITES[1] },
+    requires = { "browser", "crypto", "dom", "http", "json", "storage", "time" },
     capabilities = {
         content = "novel",
         search = search, resourceInfo = resourceInfo,
         chapterList = chapterList, chapterContent = chapterContent,
-        explore = browse,
-        exploreSchema = exploreSchema,
+        explore = browse, exploreSchema = exploreSchema,
     },
     hooks = { test = test, settings = { list = settings, action = saveSite } },
 }

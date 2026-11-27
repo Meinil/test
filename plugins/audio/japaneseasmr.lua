@@ -531,15 +531,9 @@ local function chapterContent(request)
 
     local starts = #data.starts > 0 and data.starts or { 0 }
     local startMs = (starts[chapterIdx + 1] or 0) * 1000
-    local endMs
+    local endMs = nil
     if starts[chapterIdx + 2] then
         endMs = starts[chapterIdx + 2] * 1000
-    else
-        -- 最后一章用 starts 末值 + 上一段时长 × 1.1 作兜底 endMs;
-        -- Player 端再用 `min(endMs, audio.duration * 1000)` 进一步兜底
-        local lastStart = starts[#starts] or 0
-        local prevGap = (#starts > 1) and ((starts[#starts] - starts[#starts - 1]) * 1000) or 600000
-        endMs = lastStart * 1000 + math.floor(prevGap * 1.1)
     end
 
     local audioBlock = {

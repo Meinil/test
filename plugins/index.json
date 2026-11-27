@@ -1,7 +1,7 @@
 {
   "name": "Lime 测试插件",
   "icon": "https://raw.githubusercontent.com/Meinil/lime-tauri/main/src-tauri/icons/icon.png",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "kind": "plugin",
   "entries": [
     {
@@ -12,7 +12,7 @@
     {
       "name": "japaneseasmr",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
-      "hash": "f243984cbe51ab6f02ff644b243fb8e5f0267067e56a6b412e42544e7781849e"
+      "hash": "7d7596cd26d9deb8ee4573ab401a0566415c4e783ab37246f7777a539c3a4264"
     },
     {
       "name": "Picacg",
@@ -22,7 +22,7 @@
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
-      "hash": "5fc05c7ad73ad3ad1e63bf44c2db564911df9288fabb951ebe0d0a01a4ac4145"
+      "hash": "2727f9f1890c26658f3621f362c5c06f995405be609a1ae81e4e93651543af4d"
     },
     {
       "name": "得奇小说网",

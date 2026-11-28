@@ -405,7 +405,7 @@ local function exploreSchema(query)
     if section == "latest" or section == "shelf" then
         schema[#schema + 1] = { field = "keyword", label = "搜索", type = "text", default = "" }
     end
-    return { supportsPagination = section ~= "home", filters = schema, resolvedFilters = resolved }
+    return { paginationMode = section ~= "home" and "page" or "none", filters = schema, resolvedFilters = resolved }
 end
 
 local function browse(query)

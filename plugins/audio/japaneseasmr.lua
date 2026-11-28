@@ -410,7 +410,7 @@ end
 local function exploreSchema(query)
     local reqFilters = query and query.filters or {}
     local sort = reqFilters.sort or "recent"
-    local supportsPagination = sort ~= "random"
+    local paginationMode = sort ~= "random" and "page" or "none"
     local html, err = httpGet("/tags/")
 
     local filters = baseExploreFilters()
@@ -418,7 +418,7 @@ local function exploreSchema(query)
     -- 标签页可能被 Cloudflare 单独拒绝;标签筛选是可选增强,不阻断整个发现入口。
     if not html then
         lime.log.warn("explore: tags unavailable: " .. err.message)
-        return { supportsPagination = supportsPagination, filters = filters }
+        return { paginationMode = paginationMode, filters = filters }
     end
     local doc = lime.dom.parse(html)
     local tag_options = parseTagGroups(doc)

@@ -398,7 +398,7 @@ local function exploreSchema()
     end
 
     return {
-        supportsPagination = true,
+        paginationMode = "page",
         filters = {
             {
                 field = "category",

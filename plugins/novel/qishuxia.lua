@@ -456,7 +456,7 @@ local function exploreSchema()
         options[#options + 1] = { field = c.field, label = c.label }
     end
     return {
-        supportsPagination = false,
+        paginationMode = "none",
         filters = {
             {
                 field   = "category",

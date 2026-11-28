@@ -341,13 +341,13 @@ local function exploreSchema(query)
     local filters = query and query.filters or {}
     local source = filters.source or "latest"
     local hasCategory = filters.category and filters.category ~= ""
-    local supportsPagination = hasCategory or source == "latest"
+    local paginationMode = (hasCategory or source == "latest") and "page" or "none"
     local categoryOptions = {}
     for _, category in ipairs(CATEGORIES) do
         categoryOptions[#categoryOptions + 1] = { field = category, label = category }
     end
     return {
-        supportsPagination = supportsPagination,
+        paginationMode = paginationMode,
         filters = {
             { field = "source", label = "来源", type = "single", default = "latest", options = SOURCE_OPTIONS, reloadOnChange = true },
             { field = "category", label = "分类", type = "single", options = categoryOptions, reloadOnChange = true },

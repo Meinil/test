@@ -12,37 +12,37 @@
     {
       "name": "japaneseasmr",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/audio/japaneseasmr.lua",
-      "hash": "7d7596cd26d9deb8ee4573ab401a0566415c4e783ab37246f7777a539c3a4264"
+      "hash": "740689a6c4b333cd300ef83cd00ba49be519036292d26833846424227168b749"
     },
     {
       "name": "Picacg",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/comic/picacg.lua",
-      "hash": "b3877d81c1e9a9da99001fff2d823ab647c9457d64a2233505e64e44cf00e261"
+      "hash": "84fccffcbe30b7eace721638c25cbb67811f08c87831db4fdff0b39ca03e83f0"
     },
     {
       "name": "爱丽丝书屋",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/alicesw.lua",
-      "hash": "d1199e13b0a4d812fa3f8bf1d8dc73e0be2aa499b9acbefc08a359aab037cc45"
+      "hash": "25be7fd114702307d1eff180a2051b153e3204a74613474669747621978666af"
     },
     {
       "name": "得奇小说网",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/deqixs.lua",
-      "hash": "4bdc3a00b548ed089f69d44814249daec06ecc0be8e3af76f39daeca56276010"
+      "hash": "e9f9ffabcfbf1af1536c26028b29d9fa14da60d6ffe107243b7e88441442642a"
     },
     {
       "name": "奇书网",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/novel/qishuxia.lua",
-      "hash": "acaf652850a590165e1bb8242471305472ab809bb731900fce3a733bedcfef04"
+      "hash": "b048f2f2152eb6fd5ba5c46418225c6ba85ee17c23d7649d3a01c9179465cc9b"
     },
     {
       "name": "布布影视",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/bbys.lua",
-      "hash": "063050add920c6aa3b38740610f1d10035f4a3325107819adfb2f308bc797e60"
+      "hash": "e81c98d65b863d2a974fed2e373696d05c1e1d6d75ec66d60c48c3ecc7579e78"
     },
     {
       "name": "Jable TV",
       "sourceUrl": "https://raw.githubusercontent.com/Meinil/test/refs/heads/main/plugins/video/jable.lua",
-      "hash": "10155254be1b2825823ee96050d4732cd359866d612ac4a9efc74770c5c14fce"
+      "hash": "6099ece216990d2cc85939bb18680992897f241ab5241895ae63aa69ff83853d"
     }
   ]
 }
